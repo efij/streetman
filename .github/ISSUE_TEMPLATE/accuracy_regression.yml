@@ -1,0 +1,82 @@
+name: 🎯 Accuracy Regression (HIGH PRIORITY)
+description: Streetman dropped or mangled a technical detail
+labels: ["accuracy", "priority:high", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **This is the most important bug class for streetman.** We promise 100% technical accuracy. An accuracy regression is a priority fix.
+
+        If the regression involves security-critical content (CVE IDs, auth tokens, destructive commands), please ALSO notify `security@streetman.dev`.
+
+  - type: input
+    id: prompt
+    attributes:
+      label: Prompt
+      description: The exact prompt that produced the regression
+    validations:
+      required: true
+
+  - type: dropdown
+    id: model
+    attributes:
+      label: Model
+      options:
+        - claude-opus-4-7
+        - claude-sonnet-4-6
+        - claude-haiku-4-5
+        - gpt-5-codex
+        - other
+    validations:
+      required: true
+
+  - type: dropdown
+    id: intensity
+    attributes:
+      label: Intensity
+      options:
+        - lite
+        - full
+        - ultra
+    validations:
+      required: true
+
+  - type: textarea
+    id: normal
+    attributes:
+      label: Normal answer (verbatim)
+    validations:
+      required: true
+
+  - type: textarea
+    id: compressed
+    attributes:
+      label: Streetman answer (verbatim)
+    validations:
+      required: true
+
+  - type: textarea
+    id: missing
+    attributes:
+      label: What was dropped/mangled
+      description: Specific identifier, CVE, URL, error string, version, flag, etc.
+      placeholder: "CVE-2026-1234 became CVE-2026-234"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: severity
+    attributes:
+      label: Severity
+      options:
+        - "Critical — security-critical content lost"
+        - "High — technical claim dropped"
+        - "Medium — formatting / structural drift"
+    validations:
+      required: true
+
+  - type: textarea
+    id: rubric
+    attributes:
+      label: Rubric improvement suggestion
+      description: How should the accuracy rubric catch this going forward?

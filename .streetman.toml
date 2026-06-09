@@ -1,0 +1,20 @@
+default_mode = "full"
+default_domain = "auto"
+telemetry = false
+archive_ttl_days = 30
+dashboard_port = 24845
+enable_reversible_archive = true
+enable_session_audit = true
+policy_name = "streetman-oss-default"
+allowed_modes = ["lite", "full", "ultra", "auto"]
+allowed_domains = ["auto", "prose", "code", "json", "logs", "search", "diff", "html", "sql", "k8s", "docs", "shell"]
+blocked_domains = []
+require_archive = false
+require_certificate = true
+gateway_targets = ["litellm", "openrouter", "portkey"]
+
+protected_patterns = [
+  "https?://\\S+",
+  "[A-Za-z_][A-Za-z0-9_]*::[A-Za-z_][A-Za-z0-9_]*",
+  "[A-Z]{2,}-\\d+",
+]

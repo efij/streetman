@@ -1,0 +1,9 @@
+benchmarks/results/*.json.lock
+__pycache__/
+*.pyc
+.venv/
+node_modules/
+target/
+streetman.dev/
+.DS_Store
+.env

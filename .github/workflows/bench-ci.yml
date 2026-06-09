@@ -1,0 +1,74 @@
+name: bench-ci
+
+on:
+  pull_request:
+    paths:
+      - 'crates/**'
+      - 'lexicons/**'
+      - 'benchmarks/**'
+  workflow_dispatch:
+
+concurrency:
+  group: bench-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  unit-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: 1.85.0
+      - run: cargo test --workspace
+
+  accuracy-rubric:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+      - name: Run accuracy fixtures
+        run: cargo test --workspace
+      - name: Enforce 100 accuracy across fixtures
+        run: cargo run --release --bin streetman -- bench accuracy-fixtures
+
+  bench-smoke:
+    runs-on: ubuntu-latest
+    needs: unit-tests
+    if: github.event_name == 'pull_request'
+    env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY_BENCH }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY_BENCH }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+      - name: Build release
+        run: cargo build --release
+      - name: Smoke bench (Sonnet-only, 1 trial)
+        run: |
+          ./target/release/streetman bench run \
+            --suite absolute-win \
+            --out smoke.json
+      - name: Enforce ship gate (smoke subset)
+        run: ./target/release/streetman bench gate smoke.json --min-savings-vs-leader 30 --min-accuracy 100
+
+  bench-full:
+    runs-on: ubuntu-latest
+    needs: bench-smoke
+    if: github.event_name == 'workflow_dispatch'
+    env:
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY_BENCH }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY_BENCH }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+      - run: cargo build --release
+      - name: Full bench matrix (1,440 calls)
+        run: ./target/release/streetman bench run --suite absolute-win --out bench-full.json
+      - name: Enforce full ship gate
+        run: ./target/release/streetman bench gate bench-full.json
+      - name: Upload snapshot
+        uses: actions/upload-artifact@v4
+        with:
+          name: bench-snapshot
+          path: bench-full.json

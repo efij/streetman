@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 💬 Discussions
+    url: https://github.com/yourorg/streetman/discussions
+    about: Questions, ideas, show-and-tell.
+  - name: 🔒 Security vulnerability
+    url: https://github.com/yourorg/streetman/blob/main/SECURITY.md
+    about: Report privately via security@streetman.dev — do not open public issues.
+  - name: 💼 Commercial / enterprise
+    url: https://streetman.dev/enterprise
+    about: Savings-Share Proxy, Enterprise Self-Hosted, compliance packs.
