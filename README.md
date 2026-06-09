@@ -111,36 +111,40 @@ Nobody else in the category offers independent verification infra.
 
 ## 📦 install
 
-### Claude Code
+### Current verified install
 ```bash
-/plugin marketplace add yourorg/streetman
+cargo install --git https://github.com/efij/streetman streetman-cli --bin streetman --locked
 ```
 
-### Cursor
+Run the fixture gate after install:
+
 ```bash
-streetman install cursor
+streetman bench run --suite absolute-win
 ```
 
-### Codex CLI
+### Local development
 ```bash
-codex plugin install streetman
+git clone https://github.com/efij/streetman
+cd streetman
+cargo run --bin streetman -- bench run --suite absolute-win
 ```
 
-### VS Code
-Install [streetman](https://marketplace.visualstudio.com/items?itemName=streetman) from Marketplace.
+### Package managers and editor plugins
 
-### Homebrew
-```bash
-brew install streetman
-```
+These channels are not published yet:
 
-### From source
-```bash
-cargo install streetman
-```
+- Claude Code marketplace plugin
+- Cursor installer
+- Codex CLI plugin
+- VS Code Marketplace extension
+- Homebrew formula
+- Crates.io package
 
-### Gateway adapters (drop-in for your existing proxy)
-- [LiteLLM](./adapters/litellm/README.md) — 1-line config
+### Gateway adapters
+
+The adapter docs exist, but the adapters are not implemented yet:
+
+- [LiteLLM](./adapters/litellm/README.md)
 - [Portkey](./adapters/portkey/README.md)
 - [OpenRouter](./adapters/openrouter/README.md)
 

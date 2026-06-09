@@ -1,5 +1,11 @@
 # Streetman Quickstart
 
+Install the current source-backed binary:
+
+```bash
+cargo install --git https://github.com/efij/streetman streetman-cli --bin streetman --locked
+```
+
 Build and run locally:
 
 ```bash
@@ -56,3 +62,6 @@ Expose MCP-compatible tool metadata:
 ```bash
 cargo run --bin streetman -- mcp tools
 ```
+
+Package-manager installers and editor plugins are not published yet. Today the
+verified path is the Git source install above or `cargo run` from the repository.
