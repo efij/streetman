@@ -1,5 +1,30 @@
 # Changelog
 
+## 1.0.0 - 2026-06-16
+
+- Added `streetman bench run --suite all-lanes`, the major-version gate covering
+  token correctness, prose stacking on supplied rewrites, logs/JSON, code
+  transport, reversibility/context fit, performance smoke, and enterprise-local
+  controls.
+- Fixed the compression guard path into an explicit safe-mode ladder: requested
+  mode -> safer mode(s) -> raw, with accuracy and real-token checks required
+  before any compressed output is emitted.
+- Added `streetman compress --fit N` for token-budget packing.
+- Added `streetman decode` for archive-free readable expansion of common
+  Streetman abbreviations.
+- Added tokenizer profile reporting with an honest Claude cap:
+  `streetman tokenizer profile --model claude-...`.
+- Added `streetman security scan` plus core secret/PII classification. Archive
+  records with sensitive markers are tagged before encrypted storage without
+  returning plaintext findings.
+- Added BYOK-style local archive key override via `STREETMAN_ARCHIVE_KEY`.
+- Added tamper-evident archive event hashes (`prev_hash` + `event_hash`).
+- Kept heavyweight targets honest-capped: bundled learned rewriting,
+  Claude-optimal offline counts, seccomp syscall enforcement, Sigstore/SBOM,
+  RBAC, Helm, and SIMD/daemon sub-ms performance need dedicated executable
+  gates before being claimed as complete.
+- Bumped source install/plugin manifests to `1.0.0`.
+
 ## 0.3.0 - 2026-06-16
 
 - Added `streetman bench run --suite final-case`, a real-token verification gate

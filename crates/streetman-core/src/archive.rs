@@ -1,3 +1,4 @@
+use crate::security::classify_sensitive;
 use anyhow::Context;
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 use chacha20poly1305::{
@@ -51,9 +52,12 @@ impl Archive {
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 created_at TEXT NOT NULL,
                 kind TEXT NOT NULL,
-                payload_json TEXT NOT NULL
+                payload_json TEXT NOT NULL,
+                prev_hash TEXT NOT NULL DEFAULT '',
+                event_hash TEXT NOT NULL DEFAULT ''
             );",
         )?;
+        ensure_event_hash_columns(&conn)?;
         let key = derive_local_key(&root);
         let cipher = ChaCha20Poly1305::new((&key).into());
         Ok(Self { root, conn, cipher })
@@ -75,12 +79,22 @@ impl Archive {
             self.root.join("archive").join(format!("{hash}.bin")),
             encrypted,
         )?;
+        let sensitive = classify_sensitive(original);
+        let mut note = note.into();
+        if !sensitive.is_empty() && !note.contains("sensitive=") {
+            let kinds = sensitive
+                .iter()
+                .map(|finding| finding.kind.as_str())
+                .collect::<Vec<_>>()
+                .join(",");
+            note = format!("{note}; sensitive=vaulted:{kinds}");
+        }
         let record = ArchiveRecord {
             hash: hash.clone(),
             created_at: Utc::now(),
             original_tokens_estimate: original.split_whitespace().count(),
             compressed_tokens_estimate: compressed.split_whitespace().count(),
-            note: note.into(),
+            note,
         };
         self.conn.execute(
             "INSERT OR REPLACE INTO archive
@@ -144,19 +158,55 @@ impl Archive {
     }
 
     pub fn log_event<T: Serialize>(&self, kind: &str, payload: &T) -> anyhow::Result<()> {
+        let payload_json = serde_json::to_string(payload)?;
+        let prev_hash: String = self
+            .conn
+            .query_row(
+                "SELECT event_hash FROM events ORDER BY id DESC LIMIT 1",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap_or_default();
+        let created_at = Utc::now().to_rfc3339();
+        let event_hash =
+            blake3::hash(format!("{created_at}:{kind}:{prev_hash}:{payload_json}").as_bytes())
+                .to_hex()
+                .to_string();
         self.conn.execute(
-            "INSERT INTO events (created_at, kind, payload_json) VALUES (?1, ?2, ?3)",
-            params![
-                Utc::now().to_rfc3339(),
-                kind,
-                serde_json::to_string(payload)?
-            ],
+            "INSERT INTO events (created_at, kind, payload_json, prev_hash, event_hash)
+             VALUES (?1, ?2, ?3, ?4, ?5)",
+            params![created_at, kind, payload_json, prev_hash, event_hash],
         )?;
         Ok(())
     }
 }
 
+fn ensure_event_hash_columns(conn: &Connection) -> anyhow::Result<()> {
+    let columns = conn
+        .prepare("PRAGMA table_info(events)")?
+        .query_map([], |row| row.get::<_, String>(1))?
+        .collect::<Result<Vec<_>, _>>()?;
+    if !columns.iter().any(|column| column == "prev_hash") {
+        conn.execute(
+            "ALTER TABLE events ADD COLUMN prev_hash TEXT NOT NULL DEFAULT ''",
+            [],
+        )?;
+    }
+    if !columns.iter().any(|column| column == "event_hash") {
+        conn.execute(
+            "ALTER TABLE events ADD COLUMN event_hash TEXT NOT NULL DEFAULT ''",
+            [],
+        )?;
+    }
+    Ok(())
+}
+
 fn derive_local_key(root: &Path) -> [u8; 32] {
+    if let Ok(value) = std::env::var("STREETMAN_ARCHIVE_KEY") {
+        if !value.trim().is_empty() {
+            return blake3::derive_key("streetman archive byok v1", value.as_bytes());
+        }
+    }
     let material = format!(
         "streetman-local-archive:{}:{}",
         std::env::var("USER").unwrap_or_default(),
@@ -225,5 +275,30 @@ mod tests {
             archive.retrieve(&record.hash, Some("fatal")).unwrap(),
             "fatal beta"
         );
+    }
+
+    #[test]
+    fn marks_sensitive_archives_and_logs_hash_chain() {
+        let dir = tempfile::tempdir().unwrap();
+        let archive = Archive::open(dir.path()).unwrap();
+        let record = archive
+            .store("OPENAI_API_KEY=sk-testsecret123", "redacted", "test")
+            .unwrap();
+        assert!(record.note.contains("sensitive=vaulted"));
+        archive
+            .log_event("test", &serde_json::json!({"ok": true}))
+            .unwrap();
+        archive
+            .log_event("test", &serde_json::json!({"ok": false}))
+            .unwrap();
+        let count: i64 = archive
+            .conn
+            .query_row(
+                "SELECT COUNT(*) FROM events WHERE event_hash != ''",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 2);
     }
 }

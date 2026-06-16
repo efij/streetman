@@ -13,14 +13,15 @@ use streetman_core::{
     audit::audit_text,
     audit_files,
     bench::{
-        compare_against, run_final_kf_bench, run_fixture_bench, run_redteam_bench,
-        run_token_greedy_bench,
+        compare_against, run_all_lanes_bench, run_final_kf_bench, run_fixture_bench,
+        run_redteam_bench, run_token_greedy_bench,
     },
-    build_run_receipt, check_policy, compile_shortlang, compress, elide_unchanged_regions,
-    gate_diff, lean_instructions, ponytail_h2h_fixture, ponytail_kill_report, prove_diff,
+    build_run_receipt, check_policy, classify_sensitive, compile_shortlang, compress,
+    decode_archive_free, elide_unchanged_regions, fit_to_token_budget, gate_diff,
+    lean_instructions, ponytail_h2h_fixture, ponytail_kill_report, prove_diff,
     prove_diff_with_normal_twin, review_diff, security_attestation, token_estimate,
-    verify_certificate, CompressionCertificate, CompressionMode, ContentDomain, LeanGateConfig,
-    LeanMode, StreetmanConfig,
+    tokenizer_profile, verify_certificate, CompressionCertificate, CompressionMode, ContentDomain,
+    LeanGateConfig, LeanMode, StreetmanConfig,
 };
 
 #[derive(Parser)]
@@ -57,6 +58,14 @@ enum Commands {
         json: bool,
         #[arg(long)]
         no_archive: bool,
+        #[arg(long)]
+        fit: Option<usize>,
+    },
+    Decode {
+        #[arg(value_name = "FILE")]
+        file: Option<PathBuf>,
+        #[arg(long)]
+        json: bool,
     },
     Run {
         #[arg(long)]
@@ -150,6 +159,10 @@ enum Commands {
         #[command(subcommand)]
         command: SecurityCommand,
     },
+    Tokenizer {
+        #[command(subcommand)]
+        command: TokenizerCommand,
+    },
     Gateway {
         #[command(subcommand)]
         command: GatewayCommand,
@@ -228,6 +241,20 @@ enum SecurityCommand {
     Attest {
         #[arg(long)]
         json: bool,
+    },
+    Scan {
+        #[arg(value_name = "FILE")]
+        file: Option<PathBuf>,
+        #[arg(long)]
+        json: bool,
+    },
+}
+
+#[derive(Subcommand)]
+enum TokenizerCommand {
+    Profile {
+        #[arg(long)]
+        model: Option<String>,
     },
 }
 
@@ -534,9 +561,14 @@ fn main() -> anyhow::Result<()> {
             domain,
             json,
             no_archive,
+            fit,
         } => {
             let input = read_input(file)?;
-            let result = compress(&input, mode.into(), domain.into());
+            let result = if let Some(budget) = fit {
+                fit_to_token_budget(&input, domain.into(), budget)
+            } else {
+                compress(&input, mode.into(), domain.into())
+            };
             let archive_record = if !no_archive && result.compressed != input {
                 let archive = Archive::open_default()?;
                 let record = archive.store(&input, &result.compressed, "compress command")?;
@@ -559,6 +591,23 @@ fn main() -> anyhow::Result<()> {
                 if let Some(record) = archive_record {
                     eprintln!("\n{}", retrieval_marker(&record.hash));
                 }
+            }
+        }
+        Commands::Decode { file, json } => {
+            let input = read_input(file)?;
+            let decoded = decode_archive_free(&input);
+            if json {
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&serde_json::json!({
+                        "decoder": "streetman-archive-free-v1",
+                        "input_tokens": token_estimate(&input),
+                        "decoded_tokens": token_estimate(&decoded),
+                        "decoded": decoded
+                    }))?
+                );
+            } else {
+                print!("{decoded}");
             }
         }
         Commands::Run { json, command } => run_agent_command(command, json)?,
@@ -600,6 +649,7 @@ fn main() -> anyhow::Result<()> {
         } => run_diff(original, compressed, html, out)?,
         Commands::Code { command } => run_code(command)?,
         Commands::Security { command } => run_security(command)?,
+        Commands::Tokenizer { command } => run_tokenizer(command)?,
         Commands::Gateway { command } => run_gateway(command)?,
         Commands::AccuracyCheck {
             original,
@@ -1022,6 +1072,7 @@ fn run_bench(command: BenchCommand) -> anyhow::Result<()> {
                 "redteam" | "redteam-safety" => run_redteam_bench(),
                 "token-greedy" | "case1-case2" => run_token_greedy_bench(),
                 "final-case" | "final-case-0.3" => run_final_kf_bench(),
+                "all-lanes" | "all-lanes-1.0" => run_all_lanes_bench(),
                 other => bail!("unknown bench suite: {other}"),
             };
             let json = serde_json::to_string_pretty(&result)?;
@@ -1043,19 +1094,22 @@ fn run_bench(command: BenchCommand) -> anyhow::Result<()> {
             let redteam = run_redteam_bench();
             let token_greedy = run_token_greedy_bench();
             let final_kf = run_final_kf_bench();
+            let all_lanes = run_all_lanes_bench();
             println!(
                 "{}",
                 serde_json::to_string_pretty(&serde_json::json!({
                     "absolute_win": fixture,
                     "redteam": redteam,
                     "token_greedy": token_greedy,
-                    "final_kf": final_kf
+                    "final_kf": final_kf,
+                    "all_lanes": all_lanes
                 }))?
             );
             if !fixture.gates_passed
                 || !redteam.gates_passed
                 || !token_greedy.gates_passed
                 || !final_kf.gates_passed
+                || !all_lanes.gates_passed
             {
                 bail!("accuracy fixtures failed");
             }
@@ -1152,6 +1206,35 @@ fn run_security(command: SecurityCommand) -> anyhow::Result<()> {
                 }
                 println!("signed_summary: {}", report.signed_summary);
             }
+        }
+        SecurityCommand::Scan { file, json } => {
+            let input = read_input(file)?;
+            let findings = classify_sensitive(&input);
+            if json {
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&serde_json::json!({
+                        "status": if findings.is_empty() { "pass" } else { "sensitive" },
+                        "findings": findings
+                    }))?
+                );
+            } else if findings.is_empty() {
+                println!("no sensitive markers found");
+            } else {
+                for finding in findings {
+                    println!("{} {}", finding.kind, finding.marker);
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+fn run_tokenizer(command: TokenizerCommand) -> anyhow::Result<()> {
+    match command {
+        TokenizerCommand::Profile { model } => {
+            let profile = tokenizer_profile(model.as_deref());
+            println!("{}", serde_json::to_string_pretty(&profile)?);
         }
     }
     Ok(())

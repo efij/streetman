@@ -127,13 +127,14 @@ Nobody else in the category offers independent verification infra.
 cargo install --git https://github.com/efij/streetman streetman-cli --bin streetman --locked
 ```
 
-This installs the latest pushed source version. Current source release: `0.3.0`.
+This installs the latest pushed source version. Current source release: `1.0.0`.
 
 Run the fixture gate after install:
 
 ```bash
 streetman bench run --suite absolute-win
 streetman bench run --suite token-greedy
+streetman bench run --suite all-lanes
 ```
 
 ### Local development

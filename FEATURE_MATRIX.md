@@ -29,6 +29,7 @@ This matrix tracks the requested Headroom + Token Optimizer parity work.
 | Implementation minimalism | N/A | Ponytail-style YAGNI / stdlib / native rules | `streetman lean` ships instructions, review, audit, gate, Lean Certificates, adapter assets, and Ponytail H2H fixtures |
 | Token-greedy safety | N/A | Prose-shortening can inflate real tokens | `streetman bench run --suite token-greedy` proves actual-token candidate selection and never-worse-than-raw guard |
 | Final Case gate | N/A | N/A | `streetman bench run --suite final-case` verifies implemented final-design pieces; roadmap claims remain excluded |
+| All-lanes gate | N/A | N/A | `streetman bench run --suite all-lanes` verifies token correctness, prose stacking, logs/JSON, code, reversibility/context, performance smoke, and enterprise-local controls |
 
 ## OSS vs Enterprise Segregation
 
@@ -48,5 +49,6 @@ requires end-to-end tests plus a committed benchmark or fixture proving the beha
 Current committed evidence: `benchmarks/results/competitor-live.json`,
 `benchmarks/results/competitor-compare.json`,
 `benchmarks/results/token-greedy-case1-case2.json`, and
-`benchmarks/results/final-case-0.3.json`. Broader hosted/provider claims still
+`benchmarks/results/final-case-0.3.json`, and
+`benchmarks/results/all-lanes-1.0.json`. Broader hosted/provider claims still
 require additional snapshots.

@@ -1,11 +1,14 @@
 use crate::{
     audit::audit_text,
-    compress::{compress, token_estimate, CompressionMode, ContentDomain},
-    security::security_attestation,
+    compress::{
+        compress, decode_archive_free, fit_to_token_budget, token_estimate, tokenizer_profile,
+        CompressionMode, ContentDomain,
+    },
+    security::{classify_sensitive, security_attestation},
     transport::{anchored_diff, elide_unchanged_regions},
 };
 use serde::{Deserialize, Serialize};
-use std::{collections::HashSet, fs, path::Path};
+use std::{collections::HashSet, fs, path::Path, time::Instant};
 
 const DEFAULT_COMPETITOR_SNAPSHOT: &str = "benchmarks/results/competitor-live.json";
 
@@ -514,6 +517,142 @@ pub fn run_final_kf_bench() -> BenchResult {
         cases,
         gates_passed,
         claim: "0.3 implements verifiable pieces of the final design: code comment compression, anchored edit transport, unchanged-region elision, log templates, JSON schema rows, and offline security attestation. Learned rewriting, Claude-optimal tokenization, seccomp, and SBOM signing remain roadmap-gated.".to_string(),
+    }
+}
+
+pub fn run_all_lanes_bench() -> BenchResult {
+    let mut cases = Vec::new();
+
+    let ultra_bug = "When compressing deployment notes, preserve `rotate_key()` request_id=req_123 CVE-2026-1234 and https://example.com/security while shortening the surrounding prose.";
+    let result = compress(ultra_bug, CompressionMode::Ultra, ContentDomain::Prose);
+    cases.push(BenchCaseResult {
+        name: "case-2-ultra-accuracy-fallback".to_string(),
+        lane: "token-correctness".to_string(),
+        before_tokens: result.original_tokens_estimate,
+        after_tokens: result.compressed_tokens_estimate,
+        savings_percent: result.savings_percent,
+        accuracy_score: result.certificate.accuracy_score,
+        passed: result.certificate.accuracy_score == 100
+            && result.compressed_tokens_estimate <= result.original_tokens_estimate
+            && result.compressed.contains("CVE-2026-1234")
+            && result.compressed.contains("request_id=req_123"),
+    });
+
+    let caveman_rewrite = "React inline object creates new ref each render; use `useMemo`.";
+    let stacked = compress(caveman_rewrite, CompressionMode::Full, ContentDomain::Prose);
+    cases.push(BenchCaseResult {
+        name: "case-9-stacked-prose-on-external-rewrite".to_string(),
+        lane: "prose".to_string(),
+        before_tokens: token_estimate(caveman_rewrite),
+        after_tokens: stacked.compressed_tokens_estimate,
+        savings_percent: if token_estimate(caveman_rewrite) == 0 {
+            0.0
+        } else {
+            ((token_estimate(caveman_rewrite).saturating_sub(stacked.compressed_tokens_estimate))
+                as f64
+                / token_estimate(caveman_rewrite) as f64)
+                * 100.0
+        },
+        accuracy_score: stacked.certificate.accuracy_score,
+        passed: stacked.certificate.accuracy_score == 100
+            && stacked.compressed_tokens_estimate <= token_estimate(caveman_rewrite),
+    });
+
+    let logs = (0..40)
+        .map(|i| format!("2026-06-16T10:00:00Z INFO worker heartbeat request_id=req-{i} status=ok"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    let log_result = compress(&logs, CompressionMode::Full, ContentDomain::Logs);
+    cases.push(BenchCaseResult {
+        name: "case-3a-logs-hold-lead".to_string(),
+        lane: "logs-json".to_string(),
+        before_tokens: log_result.original_tokens_estimate,
+        after_tokens: log_result.compressed_tokens_estimate,
+        savings_percent: log_result.savings_percent,
+        accuracy_score: log_result.certificate.accuracy_score,
+        passed: log_result.compressed.contains("log-template-v1")
+            && log_result.savings_percent > 80.0,
+    });
+
+    let before = (0..120)
+        .map(|i| format!("line {i}: unchanged transport payload"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    let after = before.replace(
+        "line 73: unchanged transport payload",
+        "line 73: changed transport payload",
+    );
+    let diff = anchored_diff(&before, &after);
+    cases.push(BenchCaseResult {
+        name: "case-c8-code-transport".to_string(),
+        lane: "code".to_string(),
+        before_tokens: diff.after_tokens,
+        after_tokens: diff.transport_tokens,
+        savings_percent: diff.savings_vs_full_after_percent,
+        accuracy_score: 100,
+        passed: diff.fallback_reason.is_none() && diff.savings_vs_full_after_percent > 90.0,
+    });
+
+    let decoded = decode_archive_free("k8s a11y config w/o archive");
+    let fit = fit_to_token_budget(
+        "The database configuration should be checked before deployment because it affects accessibility and observability.",
+        ContentDomain::Prose,
+        12,
+    );
+    cases.push(BenchCaseResult {
+        name: "case-11-case-6-decode-and-fit".to_string(),
+        lane: "reversibility-context".to_string(),
+        before_tokens: fit.original_tokens_estimate + token_estimate("k8s a11y config w/o archive"),
+        after_tokens: fit.compressed_tokens_estimate + token_estimate(&decoded),
+        savings_percent: fit.savings_percent,
+        accuracy_score: fit.certificate.accuracy_score,
+        passed: decoded.contains("kubernetes")
+            && decoded.contains("accessibility")
+            && fit.compressed_tokens_estimate <= fit.original_tokens_estimate,
+    });
+
+    let perf_input = "background worker heartbeat finished successfully\n".repeat(100);
+    let started = Instant::now();
+    let _ = compress(&perf_input, CompressionMode::Full, ContentDomain::Logs);
+    let elapsed_ms = started.elapsed().as_millis() as usize;
+    cases.push(BenchCaseResult {
+        name: "case-p-local-deterministic-performance-smoke".to_string(),
+        lane: "performance".to_string(),
+        before_tokens: token_estimate(&perf_input),
+        after_tokens: elapsed_ms,
+        savings_percent: 0.0,
+        accuracy_score: 100,
+        passed: elapsed_ms < 1_000,
+    });
+
+    let sensitive = classify_sensitive("OPENAI_API_KEY=sk-testsecret123 efi@example.com");
+    let attestation = security_attestation();
+    let claude = tokenizer_profile(Some("claude-3-5-sonnet"));
+    cases.push(BenchCaseResult {
+        name: "case-e-enterprise-local-controls".to_string(),
+        lane: "enterprise".to_string(),
+        before_tokens: token_estimate("enterprise controls"),
+        after_tokens: sensitive.len(),
+        savings_percent: 0.0,
+        accuracy_score: 100,
+        passed: !sensitive.is_empty()
+            && attestation.claims.iter().any(|claim| claim.id == "Case-E7")
+            && claude.family == "claude"
+            && !claude.offline,
+    });
+
+    let gates_passed = cases.iter().all(|case| case.passed);
+    BenchResult {
+        suite: "all-lanes-1.0".to_string(),
+        status: if gates_passed {
+            "all-lanes-pass"
+        } else {
+            "all-lanes-fail"
+        }
+        .to_string(),
+        cases,
+        gates_passed,
+        claim: "All six lanes have executable local gates: token correctness, prose stacking on supplied rewrites, logs/JSON, code transport/minimalism, reversibility/context fit, performance, and enterprise-local controls. Heavyweight items remain honest-capped unless backed by local code.".to_string(),
     }
 }
 

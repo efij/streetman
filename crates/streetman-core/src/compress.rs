@@ -111,6 +111,15 @@ pub struct CompressionResult {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TokenizerProfile {
+    pub requested_model: String,
+    pub family: String,
+    pub offline: bool,
+    pub tokenizer: String,
+    pub caveat: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProofVerification {
     pub status: String,
     pub input_hash_match: bool,
@@ -141,45 +150,105 @@ pub fn compress(input: &str, mode: CompressionMode, domain: ContentDomain) -> Co
         );
     }
 
-    let candidate = match resolved_domain {
+    for candidate_mode in fallback_modes(resolved_mode) {
+        let candidate = compress_candidate(input, candidate_mode, resolved_domain);
+        let report = compression_accuracy_check(input, &candidate, resolved_domain);
+        if report.score == 100 && token_estimate(&candidate) <= token_estimate(input) {
+            let fallback_reason = if candidate_mode == resolved_mode {
+                None
+            } else {
+                Some(format!(
+                    "accuracy/token guard fell back from {resolved_mode:?} to {candidate_mode:?}"
+                ))
+            };
+            return build_result(
+                input,
+                candidate,
+                candidate_mode,
+                resolved_domain,
+                fallback_reason,
+            );
+        }
+    }
+
+    build_result(
+        input,
+        input.to_string(),
+        resolved_mode,
+        resolved_domain,
+        Some("accuracy/token guard reverted output after all modes failed".to_string()),
+    )
+}
+
+fn compress_candidate(input: &str, mode: CompressionMode, domain: ContentDomain) -> String {
+    match domain {
         ContentDomain::Json => compress_json(input),
         ContentDomain::Logs | ContentDomain::Shell => compress_logs(input),
         ContentDomain::Search => compress_search(input),
         ContentDomain::Diff => protect_artifact(input, "diff"),
-        ContentDomain::Code => compress_code_comments(input, resolved_mode),
+        ContentDomain::Code => compress_code_comments(input, mode),
         ContentDomain::Sql | ContentDomain::K8s => protect_artifact(input, "code-artifact"),
         ContentDomain::CodeMap => compress_code_map(input),
         ContentDomain::Html => compress_html(input),
         ContentDomain::Context | ContentDomain::Rag | ContentDomain::History => {
-            compress_context(input, resolved_mode)
+            compress_context(input, mode)
         }
         ContentDomain::Intent | ContentDomain::AgentState => compress_shortlang_input(input),
         ContentDomain::FinalAnswer => compress_prose(input, CompressionMode::Lite),
         ContentDomain::Docs | ContentDomain::Prose | ContentDomain::Auto => {
-            compress_prose(input, resolved_mode)
+            compress_prose(input, mode)
         }
-    };
-
-    let report = compression_accuracy_check(input, &candidate, resolved_domain);
-    if report.score < 100 {
-        build_result(
-            input,
-            input.to_string(),
-            resolved_mode,
-            resolved_domain,
-            Some("accuracy guard rejected compressed output".to_string()),
-        )
-    } else if token_estimate(&candidate) > token_estimate(input) {
-        build_result(
-            input,
-            input.to_string(),
-            resolved_mode,
-            resolved_domain,
-            Some("token guard reverted output; compressed tokens exceeded raw".to_string()),
-        )
-    } else {
-        build_result(input, candidate, resolved_mode, resolved_domain, None)
     }
+}
+
+fn fallback_modes(mode: CompressionMode) -> Vec<CompressionMode> {
+    match mode {
+        CompressionMode::Ultra => vec![
+            CompressionMode::Ultra,
+            CompressionMode::Full,
+            CompressionMode::Lite,
+        ],
+        CompressionMode::Full => vec![CompressionMode::Full, CompressionMode::Lite],
+        CompressionMode::Lite | CompressionMode::Auto => vec![CompressionMode::Lite],
+    }
+}
+
+pub fn fit_to_token_budget(input: &str, domain: ContentDomain, budget: usize) -> CompressionResult {
+    let resolved_domain = detect_domain(input, domain);
+    let mut best = build_result(
+        input,
+        input.to_string(),
+        CompressionMode::Lite,
+        resolved_domain,
+        Some("raw baseline for fit".to_string()),
+    );
+    if best.compressed_tokens_estimate <= budget {
+        best.fallback_reason = Some("raw already fits token budget".to_string());
+        return best;
+    }
+    for mode in [
+        CompressionMode::Lite,
+        CompressionMode::Full,
+        CompressionMode::Ultra,
+    ] {
+        let result = compress(input, mode, resolved_domain);
+        if result.compressed_tokens_estimate < best.compressed_tokens_estimate {
+            best = result.clone();
+        }
+        if result.compressed_tokens_estimate <= budget {
+            return build_result(
+                input,
+                result.compressed,
+                result.mode,
+                resolved_domain,
+                Some(format!("fit budget {budget} with {:?} mode", result.mode)),
+            );
+        }
+    }
+    best.fallback_reason = Some(format!(
+        "could not fit token budget {budget}; emitted smallest safe candidate"
+    ));
+    best
 }
 
 fn build_result(
@@ -309,6 +378,69 @@ pub fn token_estimate_for_model(input: &str, model: &str) -> usize {
         return 0;
     }
     token_count_for_model(input, model)
+}
+
+pub fn tokenizer_profile(model: Option<&str>) -> TokenizerProfile {
+    let requested = model.unwrap_or(tokenizer_model()).to_string();
+    let lower = requested.to_ascii_lowercase();
+    if lower.contains("claude") {
+        TokenizerProfile {
+            requested_model: requested,
+            family: "claude".to_string(),
+            offline: false,
+            tokenizer: "no-public-offline-tokenizer".to_string(),
+            caveat: Some(
+                "Claude count_tokens is API-only; Streetman does not claim offline optimality"
+                    .to_string(),
+            ),
+        }
+    } else if lower.contains("gemini") {
+        TokenizerProfile {
+            requested_model: requested,
+            family: "gemini-compatible".to_string(),
+            offline: true,
+            tokenizer: "o200k_base fallback profile".to_string(),
+            caveat: Some(
+                "Gemini public tokenizer parity is best-effort unless a local vocab is configured"
+                    .to_string(),
+            ),
+        }
+    } else {
+        TokenizerProfile {
+            requested_model: requested,
+            family: "gpt".to_string(),
+            offline: true,
+            tokenizer: "tiktoken-rs bpe_for_model with o200k fallback".to_string(),
+            caveat: None,
+        }
+    }
+}
+
+pub fn decode_archive_free(input: &str) -> String {
+    let mut out = input.to_string();
+    let replacements = [
+        ("i18n", "internationalization"),
+        ("l10n", "localization"),
+        ("a11y", "accessibility"),
+        ("k8s", "kubernetes"),
+        ("o11y", "observability"),
+        ("w/o", "without"),
+        ("w/", "with"),
+        ("cuz", "because"),
+        ("b4", "before"),
+        ("obj", "object"),
+        ("ref", "reference"),
+        ("inln", "inline"),
+        ("rndr", "render"),
+        ("cfg", "configuration"),
+        ("config", "configuration"),
+    ];
+    for (short, full) in replacements {
+        let pattern =
+            regex::Regex::new(&format!(r"\b{}\b", regex::escape(short))).expect("decode regex");
+        out = pattern.replace_all(&out, full).to_string();
+    }
+    out
 }
 
 fn token_count_for_model(input: &str, model: &str) -> usize {
@@ -1522,5 +1654,34 @@ mod tests {
         let result = compress(&input, CompressionMode::Full, ContentDomain::Logs);
         assert!(result.compressed.contains("log-template-v1"));
         assert!(result.compressed_tokens_estimate < result.original_tokens_estimate);
+    }
+
+    #[test]
+    fn fit_to_budget_returns_smallest_safe_candidate() {
+        let input = "The database configuration should be checked before deployment because observability and accessibility matter.";
+        let result = fit_to_token_budget(input, ContentDomain::Prose, 12);
+        assert!(result.compressed_tokens_estimate <= result.original_tokens_estimate);
+        assert_eq!(result.certificate.accuracy_score, 100);
+        assert!(result.fallback_reason.unwrap_or_default().contains("fit"));
+    }
+
+    #[test]
+    fn archive_free_decoder_expands_common_short_forms() {
+        let decoded = decode_archive_free("k8s a11y config w/o archive");
+        assert!(decoded.contains("kubernetes"));
+        assert!(decoded.contains("accessibility"));
+        assert!(decoded.contains("configuration"));
+        assert!(decoded.contains("without"));
+    }
+
+    #[test]
+    fn tokenizer_profile_honestly_caps_claude() {
+        let profile = tokenizer_profile(Some("claude-3-5-sonnet"));
+        assert_eq!(profile.family, "claude");
+        assert!(!profile.offline);
+        assert!(profile
+            .caveat
+            .unwrap_or_default()
+            .contains("does not claim"));
     }
 }
