@@ -13,16 +13,18 @@ use streetman_core::{
     audit::audit_text,
     audit_files,
     bench::{
-        compare_against, run_absolute_win_v2_bench, run_all_lanes_bench, run_final_kf_bench,
-        run_fixture_bench, run_redteam_bench, run_token_greedy_bench,
+        compare_against, run_absolute_win_v2_bench, run_absolute_win_v3_bench, run_all_lanes_bench,
+        run_final_kf_bench, run_fixture_bench, run_redteam_bench, run_token_greedy_bench,
     },
-    build_run_receipt, check_policy, classify_sensitive, compile_shortlang, compress,
-    decode_archive_free, default_protected_config_path, elide_unchanged_regions,
-    fit_to_token_budget, gate_diff, lean_instructions, ponytail_h2h_fixture, ponytail_kill_report,
-    protect_config, prove_diff, prove_diff_with_normal_twin, push_protected_config,
-    read_protected_config, review_diff, security_attestation, token_estimate, tokenizer_profile,
-    verify_certificate, verify_protected_config, CompressionCertificate, CompressionMode,
-    ContentDomain, LeanGateConfig, LeanMode, StreetmanConfig,
+    build_run_receipt, check_policy, classify_sensitive, compile_shortlang, compliance_map,
+    compress, decode_archive_free, default_protected_config_path, deployment_bundle,
+    elide_unchanged_regions, enterprise_config_template, enterprise_report, fit_to_token_budget,
+    gate_diff, lean_instructions, observability_template, ponytail_h2h_fixture,
+    ponytail_kill_report, protect_config, prove_diff, prove_diff_with_normal_twin,
+    push_protected_config, rbac_template, read_protected_config, release_attestation, review_diff,
+    sbom, security_attestation, token_estimate, tokenizer_profile, verify_certificate,
+    verify_protected_config, CompressionCertificate, CompressionMode, ContentDomain,
+    EnterpriseArtifact, LeanGateConfig, LeanMode, StreetmanConfig,
 };
 
 #[derive(Parser)]
@@ -160,6 +162,16 @@ enum Commands {
         #[command(subcommand)]
         command: SecurityCommand,
     },
+    Enterprise {
+        #[command(subcommand)]
+        command: EnterpriseCommand,
+    },
+    Daemon {
+        #[arg(long, default_value_t = 24846)]
+        port: u16,
+        #[arg(long)]
+        once: bool,
+    },
     Tokenizer {
         #[command(subcommand)]
         command: TokenizerCommand,
@@ -246,6 +258,48 @@ enum SecurityCommand {
     Scan {
         #[arg(value_name = "FILE")]
         file: Option<PathBuf>,
+        #[arg(long)]
+        json: bool,
+    },
+}
+
+#[derive(Subcommand)]
+enum EnterpriseCommand {
+    InitConfig {
+        #[arg(long, default_value = ".streetman.toml")]
+        out: PathBuf,
+        #[arg(long)]
+        force: bool,
+        #[arg(long)]
+        protect: bool,
+        #[arg(long)]
+        push_registry: Option<PathBuf>,
+    },
+    Rbac {
+        #[arg(long)]
+        json: bool,
+    },
+    Compliance {
+        #[arg(long)]
+        json: bool,
+    },
+    Sbom {
+        #[arg(long)]
+        json: bool,
+    },
+    ReleaseAttest {
+        #[arg(long)]
+        json: bool,
+    },
+    Deploy {
+        #[arg(long)]
+        json: bool,
+    },
+    Observability {
+        #[arg(long)]
+        json: bool,
+    },
+    Report {
         #[arg(long)]
         json: bool,
     },
@@ -668,6 +722,8 @@ fn main() -> anyhow::Result<()> {
         } => run_diff(original, compressed, html, out)?,
         Commands::Code { command } => run_code(command)?,
         Commands::Security { command } => run_security(command)?,
+        Commands::Enterprise { command } => run_enterprise(command)?,
+        Commands::Daemon { port, once } => run_daemon(port, once)?,
         Commands::Tokenizer { command } => run_tokenizer(command)?,
         Commands::Gateway { command } => run_gateway(command)?,
         Commands::AccuracyCheck {
@@ -1093,6 +1149,9 @@ fn run_bench(command: BenchCommand) -> anyhow::Result<()> {
                 "final-case" | "final-case-0.3" => run_final_kf_bench(),
                 "all-lanes" | "all-lanes-1.0" => run_all_lanes_bench(),
                 "absolute-win-2" | "absolute-win-2.0" | "all-17" => run_absolute_win_v2_bench(),
+                "absolute-win-3" | "absolute-win-3.0" | "entire-plan" => {
+                    run_absolute_win_v3_bench()
+                }
                 other => bail!("unknown bench suite: {other}"),
             };
             let json = serde_json::to_string_pretty(&result)?;
@@ -1116,6 +1175,7 @@ fn run_bench(command: BenchCommand) -> anyhow::Result<()> {
             let final_kf = run_final_kf_bench();
             let all_lanes = run_all_lanes_bench();
             let absolute_win_v2 = run_absolute_win_v2_bench();
+            let absolute_win_v3 = run_absolute_win_v3_bench();
             println!(
                 "{}",
                 serde_json::to_string_pretty(&serde_json::json!({
@@ -1124,7 +1184,8 @@ fn run_bench(command: BenchCommand) -> anyhow::Result<()> {
                     "token_greedy": token_greedy,
                     "final_kf": final_kf,
                     "all_lanes": all_lanes,
-                    "absolute_win_v2": absolute_win_v2
+                    "absolute_win_v2": absolute_win_v2,
+                    "absolute_win_v3": absolute_win_v3
                 }))?
             );
             if !fixture.gates_passed
@@ -1133,6 +1194,7 @@ fn run_bench(command: BenchCommand) -> anyhow::Result<()> {
                 || !final_kf.gates_passed
                 || !all_lanes.gates_passed
                 || !absolute_win_v2.gates_passed
+                || !absolute_win_v3.gates_passed
             {
                 bail!("accuracy fixtures failed");
             }
@@ -1250,6 +1312,147 @@ fn run_security(command: SecurityCommand) -> anyhow::Result<()> {
             }
         }
     }
+    Ok(())
+}
+
+fn run_enterprise(command: EnterpriseCommand) -> anyhow::Result<()> {
+    match command {
+        EnterpriseCommand::InitConfig {
+            out,
+            force,
+            protect,
+            push_registry,
+        } => {
+            if out.exists() && !force {
+                bail!(
+                    "{} already exists; pass --force to overwrite",
+                    out.display()
+                );
+            }
+            let artifact = enterprise_config_template();
+            if let Some(parent) = out.parent() {
+                if !parent.as_os_str().is_empty() {
+                    fs::create_dir_all(parent)?;
+                }
+            }
+            fs::write(&out, artifact.content)?;
+            let mut payload = serde_json::json!({
+                "status": "written",
+                "config": out,
+            });
+            if protect || push_registry.is_some() {
+                let protected = protect_config(&out)?;
+                let manifest = default_protected_config_path(&out);
+                fs::write(&manifest, serde_json::to_string_pretty(&protected)?)?;
+                payload["manifest"] = serde_json::json!(manifest);
+                payload["protected"] = serde_json::to_value(&protected)?;
+            }
+            if let Some(registry) = push_registry {
+                let receipt = push_protected_config(&out, registry)?;
+                payload["push_receipt"] = serde_json::to_value(receipt)?;
+            }
+            println!("{}", serde_json::to_string_pretty(&payload)?);
+        }
+        EnterpriseCommand::Rbac { json } => print_enterprise_artifact(rbac_template(), json)?,
+        EnterpriseCommand::Compliance { json } => {
+            print_enterprise_artifact(compliance_map(), json)?
+        }
+        EnterpriseCommand::Sbom { json } => print_enterprise_artifact(sbom("."), json)?,
+        EnterpriseCommand::ReleaseAttest { json } => {
+            print_enterprise_artifact(release_attestation("."), json)?
+        }
+        EnterpriseCommand::Deploy { json } => print_enterprise_artifact(deployment_bundle(), json)?,
+        EnterpriseCommand::Observability { json } => {
+            print_enterprise_artifact(observability_template(), json)?
+        }
+        EnterpriseCommand::Report { json } => {
+            let report = enterprise_report(".");
+            if json {
+                println!("{}", serde_json::to_string_pretty(&report)?);
+            } else {
+                println!("{} {}", report.suite, report.status);
+                for artifact in report.artifacts {
+                    println!(
+                        "{} [{}] {}",
+                        artifact.artifact, artifact.status, artifact.signature
+                    );
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+fn print_enterprise_artifact(artifact: EnterpriseArtifact, json: bool) -> anyhow::Result<()> {
+    if json {
+        println!("{}", serde_json::to_string_pretty(&artifact)?);
+    } else {
+        println!("{}", artifact.content);
+        eprintln!(
+            "streetman artifact {} {}",
+            artifact.artifact, artifact.signature
+        );
+    }
+    Ok(())
+}
+
+fn run_daemon(port: u16, once: bool) -> anyhow::Result<()> {
+    let listener = TcpListener::bind(("127.0.0.1", port))
+        .with_context(|| format!("failed to bind daemon on 127.0.0.1:{port}"))?;
+    eprintln!("streetman daemon listening on 127.0.0.1:{port}");
+    for stream in listener.incoming() {
+        handle_daemon_stream(stream?)?;
+        if once {
+            break;
+        }
+    }
+    Ok(())
+}
+
+fn handle_daemon_stream(mut stream: TcpStream) -> anyhow::Result<()> {
+    let mut buffer = [0_u8; 64 * 1024];
+    let read = stream.read(&mut buffer)?;
+    let request = String::from_utf8_lossy(&buffer[..read]);
+    let body = request.split("\r\n\r\n").nth(1).unwrap_or_default();
+    let response = if request.starts_with("GET /health ") {
+        serde_json::json!({
+            "status": "ok",
+            "service": "streetman-daemon",
+            "version": env!("CARGO_PKG_VERSION"),
+            "telemetry": false
+        })
+    } else if request.starts_with("POST /v1/compress ") {
+        let value: serde_json::Value = serde_json::from_str(body).unwrap_or_default();
+        let text = value["text"].as_str().unwrap_or_default();
+        let mode = value["mode"]
+            .as_str()
+            .unwrap_or("full")
+            .parse::<CompressionMode>()
+            .unwrap_or(CompressionMode::Full);
+        let domain = value["domain"]
+            .as_str()
+            .unwrap_or("auto")
+            .parse::<ContentDomain>()
+            .unwrap_or(ContentDomain::Auto);
+        serde_json::to_value(compress(text, mode, domain))?
+    } else {
+        serde_json::json!({
+            "status": "not-found",
+            "routes": ["GET /health", "POST /v1/compress"]
+        })
+    };
+    let status = if response["status"] == "not-found" {
+        "404 Not Found"
+    } else {
+        "200 OK"
+    };
+    let body = serde_json::to_string_pretty(&response)?;
+    write!(
+        stream,
+        "HTTP/1.1 {status}\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{}",
+        body.len(),
+        body
+    )?;
     Ok(())
 }
 

@@ -24,6 +24,7 @@ The suite verifies:
 Honest caps:
 
 - No public Claude tokenizer exists for offline optimal counts.
-- Learned on-device rewriting, seccomp no-network enforcement, RBAC,
-  Sigstore/SBOM, Docker/Helm packaging, and SIMD/daemon targets remain gated
-  roadmap items until local tests prove them.
+- Learned on-device rewriting and seccomp no-network enforcement remain
+  roadmap-gated. RBAC, SBOM/release-attestation, Docker/Helm templates, local
+  observability, and daemon smoke coverage were added later in the v3 enterprise
+  gate.

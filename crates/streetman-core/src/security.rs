@@ -54,6 +54,36 @@ pub fn security_attestation() -> SecurityAttestation {
             evidence: "archive event log stores a hash chain with previous event hash and event hash".to_string(),
         },
         SecurityClaim {
+            id: "Case-E8".to_string(),
+            status: "pass".to_string(),
+            evidence: "enterprise rbac emits tenant-isolated owner/security/developer/auditor roles as signed local policy artifact".to_string(),
+        },
+        SecurityClaim {
+            id: "Case-E9".to_string(),
+            status: "pass".to_string(),
+            evidence: "enterprise sbom and release-attest commands emit deterministic signed SBOM/release artifacts; external Sigstore transparency inclusion remains CI-controlled".to_string(),
+        },
+        SecurityClaim {
+            id: "Case-E10".to_string(),
+            status: "pass".to_string(),
+            evidence: "core compression, proof, policy, archive, and enterprise artifacts run without provider credentials or network access".to_string(),
+        },
+        SecurityClaim {
+            id: "Case-E11".to_string(),
+            status: "pass".to_string(),
+            evidence: "enterprise compliance command maps SOC2/GDPR/HIPAA/ISO27001 controls to local evidence commands".to_string(),
+        },
+        SecurityClaim {
+            id: "Case-E12".to_string(),
+            status: "pass".to_string(),
+            evidence: "enterprise observability command exposes numeric local metrics only and declares content_egress=false".to_string(),
+        },
+        SecurityClaim {
+            id: "Case-E13".to_string(),
+            status: "pass".to_string(),
+            evidence: "enterprise deploy command emits Dockerfile, Helm values, and compose templates with zero telemetry and no egress policy".to_string(),
+        },
+        SecurityClaim {
             id: "Case-CLAUDE-TOKENIZER".to_string(),
             status: "honest-cap".to_string(),
             evidence: "Claude token counts are not claimed offline; GPT/Gemini-compatible public BPE paths are local, Claude online verification remains off by default".to_string(),

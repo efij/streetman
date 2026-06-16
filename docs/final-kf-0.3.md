@@ -25,7 +25,7 @@ Honest caps:
 
 - Claude has no public offline tokenizer. Streetman does not claim
   Claude-optimal counts; optional online verification remains off by default.
-- Learned on-device rewriting, seccomp/no-network syscall enforcement, SBOM
-  signing, SIMD streaming, daemon warm mode, and behavior-equivalence CI are
-  roadmap-gated until executable fixtures prove them.
+- Learned on-device rewriting, seccomp/no-network syscall enforcement, SIMD
+  streaming, and behavior-equivalence CI remain roadmap-gated. SBOM/release
+  attestation and daemon smoke coverage were added later in v3.
 - Prose readability is not claimed as a win over caveman-style English.

@@ -1,6 +1,6 @@
 # Streetman Absolute Win Plan
 
-Streetman 2.0 defines its strongest public lane as:
+Streetman 3.0 defines its strongest public lane as:
 
 ```text
 highest compression that is also lossless, accuracy-100, reversible or
@@ -24,7 +24,7 @@ the same local gates.
 Run:
 
 ```bash
-streetman bench run --suite absolute-win-2
+streetman bench run --suite absolute-win-3
 ```
 
 The gate covers 17 dimensions:
@@ -47,7 +47,11 @@ The gate covers 17 dimensions:
 16. tamper-evident audit attestation
 17. Claude tokenizer honesty cap
 
-It also records two published-baseline claim-boundary cases:
+It also records enterprise product-surface cases for config UX, RBAC,
+compliance mapping, SBOM, release attestation, deployment templates, local
+observability, and daemon smoke coverage.
+
+It records two published-baseline claim-boundary cases:
 
 - `published-baseline-llmlingua-lossy-gate`
 - `published-baseline-leanctx-network-lossy-gate`
@@ -58,6 +62,6 @@ It also records two published-baseline claim-boundary cases:
   committed snapshots.
 - Claude has no public offline tokenizer, so Streetman only makes best-effort or
   online-optional Claude token claims.
-- Learned rewriting, seccomp-level syscall attestation, SBOM/Sigstore release
-  signing, and hosted enterprise fleet controls need their own executable gates
-  before becoming shipped claims.
+- External Sigstore transparency-log inclusion, hosted SSO, and live raw-ratio
+  wins over lossy baselines need environment-specific runs before becoming
+  shipped claims.

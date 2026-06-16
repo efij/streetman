@@ -1,6 +1,6 @@
 {
   "name": "streetman",
-  "version": "2.0.0",
-  "description": "Absolute-win v2 gated compression, Lean mode, code transport, and enterprise controls.",
+  "version": "3.0.0",
+  "description": "Absolute-win v3 gated compression, Lean mode, code transport, daemon, and enterprise controls.",
   "author": { "name": "Streetman" }
 }

@@ -47,19 +47,20 @@ absolute-win lane.
 - `streetman lean` — implementation-minimalism layer: instructions, review, audit, gate, proof certificates, and Ponytail H2H fixtures.
 - Token-greedy compression — actual `tiktoken` counts drive transforms; final output is never worse than raw.
 
-Current source release: `2.0.0`.
+Current source release: `3.0.0`.
 
-Primary v2 gate:
+Primary v3 gate:
 
 ```bash
-streetman bench run --suite absolute-win-2
+streetman bench run --suite absolute-win-3
 ```
 
-That suite verifies 17 local dimensions under one explicit definition:
-lossless, accuracy-100, reversible/proof-carrying, deterministic, and offline.
-Published lossy/network baselines such as LLMLingua and LeanCTX remain raw-ratio
-competitors, but they do not qualify for this lane unless they satisfy the same
-local proof requirements.
+That suite verifies the 17 local accuracy/offline/reversible dimensions plus
+enterprise product surfaces: config init/protect/push UX, RBAC, compliance map,
+SBOM, release attestation, deployment templates, local observability, and a
+resident daemon smoke path. Published lossy/network baselines such as LLMLingua
+and LeanCTX remain raw-ratio competitors, but they do not qualify for this lane
+unless they satisfy the same local proof requirements.
 
 Current committed snapshot: `competitor-live-2026-06-07`.
 
@@ -142,7 +143,7 @@ Nobody else in the category offers independent verification infra.
 cargo install --git https://github.com/efij/streetman streetman-cli --bin streetman --locked
 ```
 
-This installs the latest pushed source version. Current source release: `2.0.0`.
+This installs the latest pushed source version. Current source release: `3.0.0`.
 
 Run the fixture gate after install:
 
@@ -151,6 +152,7 @@ streetman bench run --suite absolute-win
 streetman bench run --suite token-greedy
 streetman bench run --suite all-lanes
 streetman bench run --suite absolute-win-2
+streetman bench run --suite absolute-win-3
 ```
 
 ### Local development
@@ -159,6 +161,7 @@ git clone https://github.com/efij/streetman
 cd streetman
 cargo run --bin streetman -- bench run --suite absolute-win
 cargo run --bin streetman -- bench run --suite absolute-win-2
+cargo run --bin streetman -- bench run --suite absolute-win-3
 ```
 
 ### Package managers and editor plugins

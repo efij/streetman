@@ -1,9 +1,9 @@
 {
   "name": "streetman-lean",
   "displayName": "Streetman Lean",
-  "version": "2.0.0",
+  "version": "3.0.0",
   "publisher": "streetman",
-  "description": "Streetman Lean plus absolute-win v2 token, code transport, and security proof gates.",
+  "description": "Streetman Lean plus absolute-win v3 token, daemon, code transport, and security proof gates.",
   "engines": {
     "vscode": "^1.90.0"
   },

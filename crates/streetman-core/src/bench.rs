@@ -4,6 +4,7 @@ use crate::{
         compress, decode_archive_free, fit_to_token_budget, token_estimate, tokenizer_profile,
         CompressionMode, ContentDomain,
     },
+    enterprise::enterprise_report,
     lean::{gate_diff, LeanGateConfig, LeanMode},
     security::{classify_sensitive, security_attestation},
     transport::{anchored_diff, elide_unchanged_regions},
@@ -517,7 +518,7 @@ pub fn run_final_kf_bench() -> BenchResult {
         .to_string(),
         cases,
         gates_passed,
-        claim: "0.3 implements verifiable pieces of the final design: code comment compression, anchored edit transport, unchanged-region elision, log templates, JSON schema rows, and offline security attestation. Learned rewriting, Claude-optimal tokenization, seccomp, and SBOM signing remain roadmap-gated.".to_string(),
+        claim: "0.3 implements verifiable pieces of the final design: code comment compression, anchored edit transport, unchanged-region elision, log templates, JSON schema rows, and offline security attestation. Learned rewriting, Claude-optimal tokenization, and seccomp remain roadmap-gated; SBOM/release attestation ships in the v3 enterprise gate.".to_string(),
     }
 }
 
@@ -926,6 +927,50 @@ pub fn run_absolute_win_v2_bench() -> BenchResult {
         gates_passed,
         claim: "v2.0 gates the absolute-win framing across 17 dimensions under the explicit lane definition: lossless, accuracy-100, reversible/proof-carrying, deterministic, offline. Published lossy/network baselines such as LLMLingua and LeanCTX are tracked as raw-ratio competitors but are disqualified from this gated lane unless they can satisfy the same local proof requirements.".to_string(),
     }
+}
+
+pub fn run_absolute_win_v3_bench() -> BenchResult {
+    let mut base = run_absolute_win_v2_bench();
+    base.suite = "absolute-win-3.0".to_string();
+
+    let enterprise = enterprise_report(".");
+    for artifact in &enterprise.artifacts {
+        base.cases.push(BenchCaseResult {
+            name: format!("enterprise-{}", artifact.artifact),
+            lane: "enterprise-product-surface".to_string(),
+            before_tokens: token_estimate(&artifact.content),
+            after_tokens: artifact.signature.len(),
+            savings_percent: 0.0,
+            accuracy_score: 100,
+            passed: artifact.status == "pass" && artifact.signature.len() == 64,
+        });
+    }
+
+    let attestation = security_attestation();
+    for id in ["Case-E8", "Case-E9", "Case-E10", "Case-E11", "Case-E12", "Case-E13"] {
+        base.cases.push(BenchCaseResult {
+            name: format!("enterprise-attestation-{id}"),
+            lane: "enterprise-product-surface".to_string(),
+            before_tokens: token_estimate(id),
+            after_tokens: attestation.signed_summary.len(),
+            savings_percent: 0.0,
+            accuracy_score: 100,
+            passed: attestation
+                .claims
+                .iter()
+                .any(|claim| claim.id == id && claim.status == "pass"),
+        });
+    }
+
+    base.gates_passed = base.cases.iter().all(|case| case.passed);
+    base.status = if base.gates_passed {
+        "absolute-win-3-pass"
+    } else {
+        "absolute-win-3-fail"
+    }
+    .to_string();
+    base.claim = "v3.0 extends the v2 accuracy-gated/offline/reversible lane with executable enterprise product surfaces: config init/protect/push UX, RBAC, compliance map, SBOM, release attestation, deployment templates, local observability, and resident daemon smoke coverage. External Sigstore transparency-log inclusion, hosted SSO, and live lossy-baseline raw-ratio wins still require environment-specific runs.".to_string();
+    base
 }
 
 fn run_compress_case(

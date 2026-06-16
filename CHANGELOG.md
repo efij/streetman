@@ -1,5 +1,21 @@
 # Changelog
 
+## 3.0.0 - 2026-06-17
+
+- Added `streetman bench run --suite absolute-win-3`, extending the v2
+  accuracy-gated/offline/reversible lane with enterprise product-surface gates.
+- Added `streetman enterprise` commands for config init/protect/push UX, RBAC,
+  compliance mapping, SBOM, release attestation, deployment templates, local
+  observability, and a combined readiness report.
+- Added `streetman daemon` with a local resident HTTP health/compress surface and
+  `--once` mode for CI smoke verification.
+- Expanded security attestation claims for RBAC, supply-chain artifacts,
+  air-gap posture, compliance mapping, local observability, and deployment
+  templates.
+- Added `docs/absolute-win-3.0.md` and refreshed install docs to make v3 the
+  current release gate.
+- Bumped source install/plugin manifests to `3.0.0`.
+
 ## 2.0.0 - 2026-06-17
 
 - Added `streetman bench run --suite absolute-win-2`, an executable 17-dimension

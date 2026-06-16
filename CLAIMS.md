@@ -4,8 +4,8 @@ Streetman claims two bounded wins:
 
 - an **absolute win for the committed local offline snapshot**
   `competitor-live-2026-06-07`
-- an **accuracy-gated/offline/reversible lane win** when
-  `streetman bench run --suite absolute-win-2` passes
+- an **accuracy-gated/offline/reversible enterprise lane win** when
+  `streetman bench run --suite absolute-win-3` passes
 
 This repository contains deterministic compression, local encrypted archive, retrieval,
 audit reports, fixture benchmarks, live competitor capture, and claim-gate commands.
@@ -29,7 +29,11 @@ benchmarks pass the same gates.
 | Red-team compression safety | Implemented local OSS | `streetman bench run --suite redteam` |
 | Compression diff viewer | Implemented local OSS | `streetman diff <original> <compressed> --html --out <file>` |
 | Gateway conformance checks | Implemented local OSS | `streetman gateway conformance --provider all` |
-| Accuracy-gated published-baseline lane | Implemented local OSS | `streetman bench run --suite absolute-win-2`; LLMLingua/LeanCTX tracked as lossy/network raw-ratio baselines |
+| Accuracy-gated published-baseline lane | Implemented local OSS | `streetman bench run --suite absolute-win-3`; LLMLingua/LeanCTX tracked as lossy/network raw-ratio baselines |
+| Enterprise config/protect/push UX | Implemented local OSS | `streetman enterprise init-config --protect --push-registry .streetman-policy-registry` |
+| SBOM/release attestation | Implemented local OSS | `streetman enterprise sbom --json`; `streetman enterprise release-attest --json` |
+| RBAC/compliance/deploy/observability artifacts | Implemented local OSS | `streetman enterprise report --json` |
+| Resident daemon smoke path | Implemented local OSS | `streetman daemon --once --port 24846` |
 
 ## Win Gates
 

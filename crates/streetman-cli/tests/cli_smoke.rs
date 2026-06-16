@@ -220,6 +220,21 @@ fn cli_absolute_win_v2_bench_smoke() {
 }
 
 #[test]
+fn cli_absolute_win_v3_bench_smoke() {
+    let output = Command::new(env!("CARGO_BIN_EXE_streetman"))
+        .args(["bench", "run", "--suite", "absolute-win-3"])
+        .stdout(Stdio::piped())
+        .output()
+        .expect("run absolute win v3 bench");
+    assert!(output.status.success());
+    let stdout = String::from_utf8(output.stdout).expect("utf8");
+    assert!(stdout.contains("absolute-win-3.0"));
+    assert!(stdout.contains("enterprise-release-attestation"));
+    assert!(stdout.contains("enterprise-attestation-Case-E13"));
+    assert!(stdout.contains("\"gates_passed\": true"));
+}
+
+#[test]
 fn cli_fit_decode_tokenizer_security_scan_smoke() {
     let mut child = Command::new(env!("CARGO_BIN_EXE_streetman"))
         .args([
@@ -420,6 +435,99 @@ fn cli_accuracy_fixtures_include_token_greedy() {
     assert!(stdout.contains("all-lanes-pass"));
     assert!(stdout.contains("\"absolute_win_v2\""));
     assert!(stdout.contains("absolute-win-2-pass"));
+    assert!(stdout.contains("\"absolute_win_v3\""));
+    assert!(stdout.contains("absolute-win-3-pass"));
+}
+
+#[test]
+fn cli_enterprise_surfaces_smoke() {
+    let dir = std::env::temp_dir().join(format!("streetman-cli-enterprise-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).expect("mkdir");
+    let config = dir.join(".streetman.toml");
+    let registry = dir.join("registry");
+    let output = Command::new(env!("CARGO_BIN_EXE_streetman"))
+        .args(["enterprise", "init-config", "--out"])
+        .arg(&config)
+        .arg("--protect")
+        .arg("--push-registry")
+        .arg(&registry)
+        .stdout(Stdio::piped())
+        .output()
+        .expect("enterprise init");
+    assert!(output.status.success());
+    assert!(config.exists());
+    assert!(registry.exists());
+    let stdout = String::from_utf8(output.stdout).expect("utf8");
+    assert!(stdout.contains("\"protected\""));
+    assert!(stdout.contains("\"push_receipt\""));
+
+    for (subcommand, needle) in [
+        ("rbac", "streetman-rbac-v1"),
+        ("compliance", "streetman-compliance-map-v1"),
+        ("sbom", "CycloneDX"),
+        ("release-attest", "streetman-release-attestation-v1"),
+        ("deploy", "HelmValues"),
+        ("observability", "streetman-local-observability-v1"),
+        ("report", "enterprise-readiness-v1"),
+    ] {
+        let output = Command::new(env!("CARGO_BIN_EXE_streetman"))
+            .args(["enterprise", subcommand, "--json"])
+            .stdout(Stdio::piped())
+            .output()
+            .expect("enterprise command");
+        assert!(output.status.success(), "{subcommand}");
+        let stdout = String::from_utf8(output.stdout).expect("utf8");
+        assert!(stdout.contains(needle), "{subcommand}");
+    }
+}
+
+#[test]
+fn cli_daemon_once_health_smoke() {
+    let listener = std::net::TcpListener::bind(("127.0.0.1", 0)).expect("bind free port");
+    let port = listener.local_addr().expect("addr").port();
+    drop(listener);
+
+    let mut child = Command::new(env!("CARGO_BIN_EXE_streetman"))
+        .args(["daemon", "--once", "--port", &port.to_string()])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("spawn daemon");
+
+    let mut stream = None;
+    for _ in 0..500 {
+        match std::net::TcpStream::connect(("127.0.0.1", port)) {
+            Ok(connected) => {
+                stream = Some(connected);
+                break;
+            }
+            Err(_) => std::thread::sleep(std::time::Duration::from_millis(20)),
+        }
+    }
+    let Some(mut stream) = stream else {
+        let _ = child.kill();
+        let output = child.wait_with_output().expect("wait failed daemon");
+        panic!(
+            "connect daemon failed\nstdout={}\nstderr={}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+    };
+    {
+        use std::io::Write;
+        stream
+            .write_all(b"GET /health HTTP/1.1\r\nhost: 127.0.0.1\r\n\r\n")
+            .expect("write request");
+    }
+    let mut response = String::new();
+    {
+        use std::io::Read;
+        stream.read_to_string(&mut response).expect("read response");
+    }
+    let output = child.wait_with_output().expect("wait daemon");
+    assert!(output.status.success());
+    assert!(response.contains("streetman-daemon"));
+    assert!(response.contains("\"telemetry\": false"));
 }
 
 #[test]
