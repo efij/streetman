@@ -6,6 +6,9 @@ Install the current source-backed binary:
 cargo install --git https://github.com/efij/streetman streetman-cli --bin streetman --locked
 ```
 
+The Git install path tracks the latest pushed source release. Current source
+release: `0.2.0`.
+
 Build and run locally:
 
 ```bash
@@ -18,6 +21,7 @@ Run the fixture bench:
 
 ```bash
 cargo run --bin streetman -- bench run --suite absolute-win
+cargo run --bin streetman -- bench run --suite token-greedy
 ```
 
 Compare against the tracked competitor bars:
@@ -47,9 +51,9 @@ cargo run --bin streetman -- proxy --port 8787 --provider auto
 curl http://127.0.0.1:8787/health
 ```
 
-The proxy currently exposes health and placeholder compression routes. Full
-OpenAI/Anthropic forwarding is not implemented yet, but local compression is
-available at `POST /v1/compress`:
+The proxy exposes health, local compression, and OpenAI-compatible forwarding
+when `STREETMAN_UPSTREAM_URL` is set. Local compression is available at
+`POST /v1/compress`:
 
 ```bash
 curl -s http://127.0.0.1:8787/v1/compress \

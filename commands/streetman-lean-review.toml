@@ -1,0 +1,2 @@
+description = "Review the current diff for unnecessary complexity"
+prompt = "Run Streetman Lean review on this diff. Report only avoidable complexity: delete, stdlib, native, yagni, shrink. End with net lines possible."

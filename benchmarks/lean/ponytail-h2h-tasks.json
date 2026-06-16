@@ -1,0 +1,39 @@
+{
+  "suite": "streetman-lean-ponytail-h2h",
+  "baseline": {
+    "competitor": "DietrichGebert/ponytail",
+    "commit": "16319c7bc91b098975d2bfb2e351398ff8aae3e7",
+    "inspected_at": "2026-06-14",
+    "public_claim_policy": "No public win claim until live provider replay is committed."
+  },
+  "arms": [
+    "baseline",
+    "ponytail",
+    "streetman-compression-only",
+    "streetman-lean-compression"
+  ],
+  "metrics": [
+    "loc",
+    "files_touched",
+    "dependencies_added",
+    "tests_passing",
+    "tokens",
+    "wall_time_seconds",
+    "safety_probes",
+    "extension_lines_changed",
+    "lean_certificate_present"
+  ],
+  "tasks": [
+    { "id": "email-validator", "family": "everyday" },
+    { "id": "debounce", "family": "everyday" },
+    { "id": "csv-sum", "family": "everyday" },
+    { "id": "react-countdown", "family": "everyday" },
+    { "id": "rate-limit", "family": "everyday" },
+    { "id": "production-log-cli", "family": "production" },
+    { "id": "production-file-sync", "family": "production" },
+    { "id": "production-dispatcher", "family": "production" },
+    { "id": "production-validation", "family": "production" },
+    { "id": "production-auth", "family": "production" },
+    { "id": "production-ledger", "family": "production" }
+  ]
+}

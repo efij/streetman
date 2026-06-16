@@ -1,0 +1,2 @@
+description = "Switch Streetman Lean intensity level (lite/full/ultra/off)"
+prompt = "Switch to Streetman Lean {{args}} mode. Build the smallest correct implementation: stdlib first, native platform features before dependencies, no unrequested abstractions, one small runnable check for non-trivial logic, and streetman: shortcut comments with ceiling + upgrade path."

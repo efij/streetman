@@ -1,0 +1,6 @@
+{
+  "name": "streetman",
+  "version": "0.2.0",
+  "description": "Streetman token-greedy compression and Lean mode for smallest correct diffs.",
+  "contextFileName": "AGENTS.md"
+}

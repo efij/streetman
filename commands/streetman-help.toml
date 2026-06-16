@@ -1,0 +1,2 @@
+description = "Show Streetman compression and Lean command help"
+prompt = "Show the Streetman help card: compression, proof, lean review/audit/gate/prove, and benchmark commands."

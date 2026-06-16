@@ -1,0 +1,2 @@
+description = "Report whether Streetman feature-kills Ponytail"
+prompt = "Run `streetman lean kill --against ponytail --json` and summarize whether Streetman includes Ponytail feature-wise plus Streetman's extra proof/compression/gateway features."

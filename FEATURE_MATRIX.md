@@ -8,9 +8,9 @@ This matrix tracks the requested Headroom + Token Optimizer parity work.
 | JSON/tool-output compression | SmartCrusher + CCR | Runtime compression events | Scaffolded with anomaly-preserving JSON summary |
 | Logs/search/diffs/code | ContentRouter compressors | Bash/read handlers | Snapshot-winning deterministic handlers for logs/search/pytest |
 | Reversible originals | CCR retrieve tool | Tool archive/expand | Scaffolded encrypted archive + retrieve |
-| Proxy | OpenAI/Anthropic/Gemini proxy | N/A | Local `/health`, `/stats`, `/v1/compress`; provider forwarding pending |
-| MCP tools | `headroom_compress/retrieve/stats` | N/A | Tool metadata + local call shim implemented |
-| Memory | Cross-agent memory | Config/memory audits | Not implemented |
+| Proxy | OpenAI/Anthropic/Gemini proxy | N/A | Local `/health`, `/stats`, `/v1/compress`, chat/responses transform, and `STREETMAN_UPSTREAM_URL` forwarding |
+| MCP tools | `headroom_compress/retrieve/stats` | N/A | `streetman mcp serve` exposes compress/compile/retrieve/stats over stdio JSON |
+| Memory | Cross-agent memory | Config/memory audits | Shared ShortLang memory store via `streetman memory add/list` |
 | Session quality | Context management | v6 dual-score | Scaffolded audit score |
 | Compaction continuity | CCR/context tracker | Progressive checkpoints | Planned; audit detectors scaffolded |
 | Dashboard | Stats/history | Full local dashboard | Intel Dashboard implemented as local HTML |
@@ -21,6 +21,11 @@ This matrix tracks the requested Headroom + Token Optimizer parity work.
 | Red-team compression suite | Safety by compressor rules | Safety by config/audit | OSS `streetman bench run --suite redteam` implemented |
 | Compression diff viewer | N/A | Dashboard issue views | OSS text/HTML diff via `streetman diff` |
 | Gateway conformance | Proxy compatibility | Codex/session support | OSS LiteLLM/OpenRouter/Portkey contract checks via `streetman gateway conformance` |
+| Agent wrapping | `headroom wrap` for coding agents | Codex/session support | `streetman run` and `streetman wrap` emit replayable run receipts |
+| Cache alignment | CacheAligner | N/A | `streetman cache-align` stabilizes policy/memory/retrieval/payload prefixes |
+| H2H proof | Public proof/evals | N/A | `streetman duel --against headroom` creates trace comparison JSON/HTML |
+| Implementation minimalism | N/A | Ponytail-style YAGNI / stdlib / native rules | `streetman lean` ships instructions, review, audit, gate, Lean Certificates, adapter assets, and Ponytail H2H fixtures |
+| Token-greedy safety | N/A | Prose-shortening can inflate real tokens | `streetman bench run --suite token-greedy` proves actual-token candidate selection and never-worse-than-raw guard |
 
 ## OSS vs Enterprise Segregation
 

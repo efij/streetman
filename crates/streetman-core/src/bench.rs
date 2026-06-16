@@ -312,6 +312,79 @@ pub fn run_redteam_bench() -> BenchResult {
     }
 }
 
+pub fn run_token_greedy_bench() -> BenchResult {
+    let mut cases = Vec::new();
+
+    let regression = "creating dependencies configuration";
+    let legacy_char_greedy = "crtng dpndncs cnfgrtn";
+    let before = token_estimate(regression);
+    let legacy_after = token_estimate(legacy_char_greedy);
+    cases.push(BenchCaseResult {
+        name: "legacy-char-greedy-regression-detected".to_string(),
+        lane: "tokenizer".to_string(),
+        before_tokens: before,
+        after_tokens: legacy_after,
+        savings_percent: if before == 0 {
+            0.0
+        } else {
+            ((before as isize - legacy_after as isize) as f64 / before as f64) * 100.0
+        },
+        accuracy_score: 100,
+        passed: legacy_after > before,
+    });
+
+    let trap =
+        "creating dependencies configuration for to before rendering object reference inline";
+    let result = compress(trap, CompressionMode::Full, ContentDomain::Prose);
+    cases.push(BenchCaseResult {
+        name: "case1-case2-token-greedy-never-worse".to_string(),
+        lane: "output".to_string(),
+        before_tokens: result.original_tokens_estimate,
+        after_tokens: result.compressed_tokens_estimate,
+        savings_percent: result.savings_percent,
+        accuracy_score: result.certificate.accuracy_score,
+        passed: result.compressed_tokens_estimate <= result.original_tokens_estimate
+            && !result.compressed.contains('4')
+            && result
+                .certificate
+                .token_guard
+                .starts_with("never-worse-than-raw/")
+            && result.certificate.token_guard.ends_with("-greedy"),
+    });
+
+    let standard_abbrev_trap =
+        "kubernetes accessibility observability localization internationalization";
+    let result = compress(
+        standard_abbrev_trap,
+        CompressionMode::Full,
+        ContentDomain::Prose,
+    );
+    cases.push(BenchCaseResult {
+        name: "standard-abbrev-only-if-token-positive".to_string(),
+        lane: "output".to_string(),
+        before_tokens: result.original_tokens_estimate,
+        after_tokens: result.compressed_tokens_estimate,
+        savings_percent: result.savings_percent,
+        accuracy_score: result.certificate.accuracy_score,
+        passed: result.compressed_tokens_estimate <= result.original_tokens_estimate
+            && !result.compressed.contains("k8s a11y o11y"),
+    });
+
+    let gates_passed = cases.iter().all(|case| case.passed);
+    BenchResult {
+        suite: "token-greedy-case1-case2".to_string(),
+        status: if gates_passed {
+            "token-greedy-pass"
+        } else {
+            "token-greedy-fail"
+        }
+        .to_string(),
+        cases,
+        gates_passed,
+        claim: "Case-1/Case-2 pass means actual tiktoken counts drive transforms and compressed output is never worse than raw on committed trap fixtures.".to_string(),
+    }
+}
+
 fn run_compress_case(
     name: &str,
     lane: &str,

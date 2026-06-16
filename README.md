@@ -26,14 +26,22 @@ Streetman now has a working Rust implementation plus a committed offline competi
 snapshot that passes the local absolute-win gate:
 
 - `streetman compress` — deterministic compression for prose, JSON, logs, search, diffs, code, docs, HTML.
+- `streetman compile` — ShortLang input/context compiler for prompts, logs, RAG chunks, history, and agent state.
+- `streetman run` / `streetman wrap` — agent command wrapper that writes replayable run receipts.
 - `streetman retrieve` — encrypted local archive retrieval for exact originals.
 - `streetman audit` — local quality/waste reports and dashboard HTML.
 - `streetman bench` — fixture benches, live competitor capture, and gated compare output.
-- `streetman proxy` — local health/proxy scaffold; provider forwarding still pending.
+- `streetman proxy` — local OpenAI-compatible transform proxy; forwards when `STREETMAN_UPSTREAM_URL` is set.
+- `streetman mcp serve` — stdio JSON MCP-style server for compress/compile/retrieve/stats.
+- `streetman memory` / `streetman learn` — shared ShortLang memory and failed-run learning notes.
+- `streetman cache-align` — stable prompt-prefix assembly for policy, memory, retrieval tools, and payload.
+- `streetman duel` — Headroom-facing trace comparison report for public H2H receipts.
 - `streetman policy` — local policy-as-code checks for allowed modes/domains, zero telemetry, certificates, gateway targets.
 - `streetman proof` — deterministic proof-certificate verification for compressed outputs.
 - `streetman diff` — local text/HTML compression diff reports with protected-token accuracy.
 - `streetman gateway conformance` — local LiteLLM/OpenRouter/Portkey adapter contract checks.
+- `streetman lean` — implementation-minimalism layer: instructions, review, audit, gate, proof certificates, and Ponytail H2H fixtures.
+- Token-greedy compression — actual `tiktoken` counts drive transforms; final output is never worse than raw.
 
 Current committed snapshot: `competitor-live-2026-06-07`.
 
@@ -116,10 +124,13 @@ Nobody else in the category offers independent verification infra.
 cargo install --git https://github.com/efij/streetman streetman-cli --bin streetman --locked
 ```
 
+This installs the latest pushed source version. Current source release: `0.2.0`.
+
 Run the fixture gate after install:
 
 ```bash
 streetman bench run --suite absolute-win
+streetman bench run --suite token-greedy
 ```
 
 ### Local development
@@ -165,6 +176,9 @@ streetman bench run --suite absolute-win
 # Run the safety red-team bench
 streetman bench run --suite redteam
 
+# Prove token-greedy / never-worse behavior
+streetman bench run --suite token-greedy
+
 # Check local policy-as-code
 streetman policy check --mode ultra --domain prose README.md
 
@@ -173,6 +187,12 @@ streetman diff original.txt compressed.txt --html --out benchmarks/results/compr
 
 # Check gateway adapter contracts
 streetman gateway conformance --provider all
+
+# Use Streetman Lean against code bloat
+streetman lean review --diff
+streetman lean gate --before base --after HEAD
+streetman lean prove --diff --normal-twin full-version.patch --command "cargo test"
+streetman lean kill --against ponytail --json
 
 # Start proxy scaffold
 streetman proxy --port 8787 --provider auto

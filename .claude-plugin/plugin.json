@@ -1,0 +1,6 @@
+{
+  "name": "streetman",
+  "version": "0.2.0",
+  "description": "Token-greedy compression, proof certificates, and Lean mode for smallest correct diffs.",
+  "author": { "name": "Streetman" }
+}

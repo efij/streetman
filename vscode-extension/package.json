@@ -1,0 +1,38 @@
+{
+  "name": "streetman-lean",
+  "displayName": "Streetman Lean",
+  "version": "0.2.0",
+  "publisher": "streetman",
+  "description": "Streetman Lean mode plus token-greedy proof gates for smallest correct diffs.",
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": ["Other"],
+  "activationEvents": [
+    "onCommand:streetmanLean.instructions",
+    "onCommand:streetmanLean.review",
+    "onCommand:streetmanLean.gate",
+    "onCommand:streetmanLean.prove"
+  ],
+  "main": "./extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "streetmanLean.instructions",
+        "title": "Streetman Lean: Show Instructions"
+      },
+      {
+        "command": "streetmanLean.review",
+        "title": "Streetman Lean: Review Diff"
+      },
+      {
+        "command": "streetmanLean.gate",
+        "title": "Streetman Lean: Gate Diff"
+      },
+      {
+        "command": "streetmanLean.prove",
+        "title": "Streetman Lean: Prove Diff"
+      }
+    ]
+  }
+}

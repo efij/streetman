@@ -1,0 +1,10 @@
+---
+alwaysApply: true
+---
+
+# Streetman Lean
+
+Build the smallest correct implementation. Use stdlib, native platform features,
+and already-installed dependencies before adding code or packages. No speculative
+abstractions. Mark intentional shortcuts with `streetman:` plus ceiling and
+upgrade path. Non-trivial logic needs one small runnable check.

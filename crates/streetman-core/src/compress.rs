@@ -1,5 +1,6 @@
 use crate::accuracy::{accuracy_check, protected_tokens, AccuracyReport};
 use serde::{Deserialize, Serialize};
+use std::sync::OnceLock;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
@@ -28,10 +29,14 @@ impl std::str::FromStr for CompressionMode {
 #[serde(rename_all = "kebab-case")]
 pub enum ContentDomain {
     Auto,
+    Intent,
+    Context,
     Prose,
     Code,
+    CodeMap,
     Json,
     Logs,
+    Rag,
     Search,
     Diff,
     Html,
@@ -39,6 +44,9 @@ pub enum ContentDomain {
     K8s,
     Docs,
     Shell,
+    History,
+    AgentState,
+    FinalAnswer,
 }
 
 impl std::str::FromStr for ContentDomain {
@@ -47,10 +55,14 @@ impl std::str::FromStr for ContentDomain {
     fn from_str(value: &str) -> Result<Self, Self::Err> {
         match value {
             "auto" => Ok(Self::Auto),
+            "intent" => Ok(Self::Intent),
+            "context" => Ok(Self::Context),
             "prose" => Ok(Self::Prose),
             "code" => Ok(Self::Code),
+            "code-map" | "codemap" => Ok(Self::CodeMap),
             "json" => Ok(Self::Json),
             "logs" => Ok(Self::Logs),
+            "rag" => Ok(Self::Rag),
             "search" => Ok(Self::Search),
             "diff" => Ok(Self::Diff),
             "html" => Ok(Self::Html),
@@ -58,6 +70,9 @@ impl std::str::FromStr for ContentDomain {
             "k8s" => Ok(Self::K8s),
             "docs" => Ok(Self::Docs),
             "shell" => Ok(Self::Shell),
+            "history" => Ok(Self::History),
+            "agent-state" | "agentstate" => Ok(Self::AgentState),
+            "final-answer" | "finalanswer" => Ok(Self::FinalAnswer),
             other => Err(format!("unknown domain: {other}")),
         }
     }
@@ -75,6 +90,10 @@ pub struct CompressionCertificate {
     pub accuracy_score: u8,
     pub mode: CompressionMode,
     pub domain: ContentDomain,
+    #[serde(default = "default_tokenizer_model")]
+    pub tokenizer_model: String,
+    #[serde(default)]
+    pub token_guard: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -86,6 +105,8 @@ pub struct CompressionResult {
     pub domain: ContentDomain,
     pub mode: CompressionMode,
     pub fallback_reason: Option<String>,
+    pub tokenizer_model: String,
+    pub token_guard: String,
     pub certificate: CompressionCertificate,
 }
 
@@ -124,9 +145,17 @@ pub fn compress(input: &str, mode: CompressionMode, domain: ContentDomain) -> Co
         ContentDomain::Json => compress_json(input),
         ContentDomain::Logs | ContentDomain::Shell => compress_logs(input),
         ContentDomain::Search => compress_search(input),
-        ContentDomain::Diff => compress_diff(input),
-        ContentDomain::Code | ContentDomain::Sql | ContentDomain::K8s => compress_code(input),
+        ContentDomain::Diff => protect_artifact(input, "diff"),
+        ContentDomain::Code | ContentDomain::Sql | ContentDomain::K8s => {
+            protect_artifact(input, "code-artifact")
+        }
+        ContentDomain::CodeMap => compress_code_map(input),
         ContentDomain::Html => compress_html(input),
+        ContentDomain::Context | ContentDomain::Rag | ContentDomain::History => {
+            compress_context(input, resolved_mode)
+        }
+        ContentDomain::Intent | ContentDomain::AgentState => compress_shortlang_input(input),
+        ContentDomain::FinalAnswer => compress_prose(input, CompressionMode::Lite),
         ContentDomain::Docs | ContentDomain::Prose | ContentDomain::Auto => {
             compress_prose(input, resolved_mode)
         }
@@ -140,6 +169,14 @@ pub fn compress(input: &str, mode: CompressionMode, domain: ContentDomain) -> Co
             resolved_mode,
             resolved_domain,
             Some("accuracy guard rejected compressed output".to_string()),
+        )
+    } else if token_estimate(&candidate) > token_estimate(input) {
+        build_result(
+            input,
+            input.to_string(),
+            resolved_mode,
+            resolved_domain,
+            Some("token guard reverted output; compressed tokens exceeded raw".to_string()),
         )
     } else {
         build_result(input, candidate, resolved_mode, resolved_domain, None)
@@ -155,6 +192,10 @@ fn build_result(
 ) -> CompressionResult {
     let before = token_estimate(original);
     let after = token_estimate(&compressed);
+    debug_assert!(
+        after <= before || fallback_reason.is_some(),
+        "Streetman token guard invariant violated: after={after} before={before}"
+    );
     let savings_percent = if before == 0 {
         0.0
     } else {
@@ -163,9 +204,11 @@ fn build_result(
     let report = compression_accuracy_check(original, &compressed, domain);
     let input_hash = blake3_hex(original);
     let output_hash = blake3_hex(&compressed);
-    let algorithm = format!("streetman-deterministic/{mode:?}/{domain:?}");
+    let tokenizer_model = tokenizer_model().to_string();
+    let token_guard = format!("never-worse-than-raw/{tokenizer_model}-greedy");
+    let algorithm = format!("streetman-token-greedy/{mode:?}/{domain:?}/{tokenizer_model}");
     let certificate_id = blake3_hex(&format!(
-        "{input_hash}:{output_hash}:{algorithm}:{}:{}:{}",
+        "{input_hash}:{output_hash}:{algorithm}:{token_guard}:{}:{}:{}",
         report.protected_count, report.protected_preserved, report.score
     ));
     let proof_signature = certificate_signature(
@@ -185,6 +228,8 @@ fn build_result(
         domain,
         mode,
         fallback_reason,
+        tokenizer_model: tokenizer_model.clone(),
+        token_guard: token_guard.clone(),
         certificate: CompressionCertificate {
             certificate_id,
             input_hash,
@@ -196,6 +241,8 @@ fn build_result(
             accuracy_score: report.score,
             mode,
             domain,
+            tokenizer_model,
+            token_guard,
         },
     }
 }
@@ -255,7 +302,40 @@ pub fn token_estimate(input: &str) -> usize {
     if input.is_empty() {
         return 0;
     }
-    input.chars().count().div_ceil(4).max(1)
+    token_count_for_model(input, tokenizer_model())
+}
+
+pub fn token_estimate_for_model(input: &str, model: &str) -> usize {
+    if input.is_empty() {
+        return 0;
+    }
+    token_count_for_model(input, model)
+}
+
+fn token_count_for_model(input: &str, model: &str) -> usize {
+    tiktoken_rs::bpe_for_model(model)
+        .map(|bpe| bpe.encode_with_special_tokens(input).len())
+        .unwrap_or_else(|_| {
+            tiktoken_rs::o200k_base_singleton()
+                .encode_with_special_tokens(input)
+                .len()
+        })
+}
+
+fn tokenizer_model() -> &'static str {
+    static MODEL: OnceLock<String> = OnceLock::new();
+    MODEL
+        .get_or_init(|| {
+            std::env::var("STREETMAN_MODEL")
+                .ok()
+                .filter(|value| !value.trim().is_empty())
+                .unwrap_or_else(|| "gpt-4o".to_string())
+        })
+        .as_str()
+}
+
+fn default_tokenizer_model() -> String {
+    tokenizer_model().to_string()
 }
 
 fn detect_domain(input: &str, requested: ContentDomain) -> ContentDomain {
@@ -295,6 +375,9 @@ fn detect_domain(input: &str, requested: ContentDomain) -> ContentDomain {
     if input.contains("fn ") || input.contains("function ") || input.contains("class ") {
         return ContentDomain::Code;
     }
+    if input.lines().count() > 80 || input.len() > 12_000 {
+        return ContentDomain::Context;
+    }
     ContentDomain::Prose
 }
 
@@ -328,12 +411,12 @@ fn compress_prose(input: &str, mode: CompressionMode) -> String {
     }
     let mut out = input.to_string();
     for (from, to) in phrase_rules() {
-        out = replace_case_insensitive(&out, from, to);
+        out = token_greedy_replace_case_insensitive(&out, from, to);
     }
-    out = out.replace(" and ", " & ");
-    out = out.replace(" or ", " | ");
-    out = out.replace(" not equal to ", " ≠ ");
-    out = out.replace(" equals ", " = ");
+    out = token_greedy_replace_literal(&out, " and ", " & ");
+    out = token_greedy_replace_literal(&out, " or ", " | ");
+    out = token_greedy_replace_literal(&out, " not equal to ", " ≠ ");
+    out = token_greedy_replace_literal(&out, " equals ", " = ");
     out = crunch_numerics(&out);
 
     let mut result = String::with_capacity(out.len());
@@ -372,7 +455,7 @@ fn flush_word(out: &mut String, token: &mut String, mode: CompressionMode, prote
     } else if protected || should_preserve_word(token) {
         token.clone()
     } else {
-        skeletonize(token, mode)
+        token_greedy_word(token, mode)
     };
     out.push_str(&rendered);
     token.clear();
@@ -397,11 +480,44 @@ fn should_preserve_word(word: &str) -> bool {
     protected_tokens(word).len() > 1
 }
 
-fn skeletonize(word: &str, mode: CompressionMode) -> String {
+fn token_greedy_word(word: &str, mode: CompressionMode) -> String {
+    let mut candidates = vec![word.to_string()];
     let lower = word.to_ascii_lowercase();
-    if let Some(short) = shortcut(&lower) {
-        return short.to_string();
+    if lower != word {
+        candidates.push(lower.clone());
     }
+    if let Some(short) = standard_abbrev(&lower) {
+        candidates.push(short.to_string());
+    }
+    if let Some(short) = shortcut(&lower) {
+        candidates.push(short.to_string());
+    }
+    candidates.push(raw_skeletonize(&lower, mode));
+    if matches!(mode, CompressionMode::Ultra) {
+        candidates.push(lower.replace("tion", "tn").replace("ing", "ng"));
+    }
+    choose_min_token_variant(word, candidates)
+}
+
+fn choose_min_token_variant(original: &str, candidates: Vec<String>) -> String {
+    let original_tokens = token_estimate(original);
+    let mut best = original.to_string();
+    let mut best_tokens = original_tokens;
+    for candidate in candidates {
+        if candidate.is_empty() || candidate == original {
+            continue;
+        }
+        let candidate_tokens = token_estimate(&candidate);
+        if candidate_tokens < best_tokens {
+            best = candidate;
+            best_tokens = candidate_tokens;
+        }
+    }
+    best
+}
+
+fn raw_skeletonize(word: &str, mode: CompressionMode) -> String {
+    let lower = word.to_ascii_lowercase();
     if matches!(mode, CompressionMode::Lite) && lower.len() < 7 {
         return lower;
     }
@@ -542,12 +658,12 @@ fn split_sentences(input: &str) -> Vec<String> {
 fn compress_prose_fragment(input: &str, mode: CompressionMode) -> String {
     let mut out = input.to_string();
     for (from, to) in phrase_rules() {
-        out = replace_case_insensitive(&out, from, to);
+        out = token_greedy_replace_case_insensitive(&out, from, to);
     }
-    out = out.replace(" and ", " & ");
-    out = out.replace(" or ", " | ");
-    out = out.replace(" because ", " cuz ");
-    out = out.replace(" — ", " -> ");
+    out = token_greedy_replace_literal(&out, " and ", " & ");
+    out = token_greedy_replace_literal(&out, " or ", " | ");
+    out = token_greedy_replace_literal(&out, " because ", " cuz ");
+    out = token_greedy_replace_literal(&out, " — ", " -> ");
     out = crunch_numerics(&out);
 
     let mut result = String::with_capacity(out.len());
@@ -630,6 +746,21 @@ fn shortcut(word: &str) -> Option<&'static str> {
     }
 }
 
+fn standard_abbrev(word: &str) -> Option<&'static str> {
+    match word {
+        "internationalization" => Some("i18n"),
+        "localization" => Some("l10n"),
+        "accessibility" => Some("a11y"),
+        "kubernetes" => Some("k8s"),
+        "observability" => Some("o11y"),
+        "configuration" => Some("config"),
+        "approximate" | "approximately" => Some("approx"),
+        "example" => Some("e.g."),
+        "identifier" => Some("id"),
+        _ => None,
+    }
+}
+
 fn phrase_rules() -> &'static [(&'static str, &'static str)] {
     &[
         ("make sure to", "ensure"),
@@ -649,6 +780,20 @@ fn replace_case_insensitive(input: &str, from: &str, to: &str) -> String {
         .build()
         .expect("literal regex");
     pattern.replace_all(input, to).to_string()
+}
+
+fn token_greedy_replace_case_insensitive(input: &str, from: &str, to: &str) -> String {
+    if token_estimate(to) >= token_estimate(from) {
+        return input.to_string();
+    }
+    replace_case_insensitive(input, from, to)
+}
+
+fn token_greedy_replace_literal(input: &str, from: &str, to: &str) -> String {
+    if token_estimate(to) >= token_estimate(from) {
+        return input.to_string();
+    }
+    input.replace(from, to)
 }
 
 fn crunch_numerics(input: &str) -> String {
@@ -757,6 +902,74 @@ fn compress_search(input: &str) -> String {
     )
 }
 
+fn compress_context(input: &str, mode: CompressionMode) -> String {
+    let mut parts = Vec::new();
+    let mut omitted = 0usize;
+    let mut seen = std::collections::HashSet::new();
+
+    for line in input.lines() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        let lower = trimmed.to_ascii_lowercase();
+        let signal = [
+            "error",
+            "fatal",
+            "failed",
+            "exception",
+            "todo",
+            "fix",
+            "decision",
+            "changed",
+            "diff",
+            "test",
+            "warning",
+            "cve",
+            "api",
+            "endpoint",
+        ]
+        .iter()
+        .any(|needle| lower.contains(needle))
+            || trimmed.starts_with("```")
+            || protected_tokens(trimmed).len() > 1;
+        if signal && seen.insert(trimmed.to_string()) {
+            parts.push(compress_prose_fragment(trimmed, mode));
+        } else {
+            omitted += 1;
+        }
+        if parts.len() >= 40 {
+            omitted += input.lines().count().saturating_sub(parts.len());
+            break;
+        }
+    }
+
+    if parts.is_empty() {
+        compress_prose(input, mode)
+    } else {
+        format!(
+            "[streetman context: {} low-signal lines omitted]\n{}",
+            omitted,
+            parts.join("\n")
+        )
+    }
+}
+
+fn compress_shortlang_input(input: &str) -> String {
+    let mut lines = Vec::new();
+    for sentence in split_sentences(input).into_iter().take(16) {
+        let compressed = compress_prose_fragment(&sentence, CompressionMode::Ultra);
+        if !compressed.is_empty() {
+            lines.push(format!("DO {}", compressed));
+        }
+    }
+    if lines.is_empty() {
+        format!("DO {}", compress_prose(input, CompressionMode::Ultra))
+    } else {
+        lines.join("\n")
+    }
+}
+
 fn compression_accuracy_check(
     original: &str,
     candidate: &str,
@@ -769,6 +982,10 @@ fn compression_accuracy_check(
         ContentDomain::Search => {
             accuracy_check(&filter_representative_search_lines(original), candidate)
         }
+        ContentDomain::Context | ContentDomain::Rag | ContentDomain::History => {
+            accuracy_check(&filter_representative_context_lines(original), candidate)
+        }
+        ContentDomain::CodeMap => accuracy_check(&filter_code_structure_lines(original), candidate),
         ContentDomain::Prose | ContentDomain::Docs => {
             accuracy_from_tokens(prose_protected_tokens(original), candidate)
         }
@@ -857,28 +1074,14 @@ fn filter_representative_search_lines(input: &str) -> String {
     kept.join("\n")
 }
 
-fn compress_diff(input: &str) -> String {
-    let kept = input
-        .lines()
-        .filter(|line| {
-            line.starts_with("diff --git")
-                || line.starts_with("+++")
-                || line.starts_with("---")
-                || line.starts_with("@@")
-                || line.starts_with("+")
-                || line.starts_with("-")
-        })
-        .take(200)
-        .collect::<Vec<_>>()
-        .join("\n");
-    if kept.is_empty() {
-        input.to_string()
-    } else {
-        kept
-    }
+fn protect_artifact(input: &str, artifact: &str) -> String {
+    format!(
+        "[streetman artifact firewall: {artifact} byte-exact; compressor_mutated_artifacts=0]\n{}",
+        input
+    )
 }
 
-fn compress_code(input: &str) -> String {
+fn compress_code_map(input: &str) -> String {
     let mut out = Vec::new();
     let mut omitted = 0usize;
     for line in input.lines() {
@@ -906,11 +1109,62 @@ fn compress_code(input: &str) -> String {
         input.to_string()
     } else {
         format!(
-            "[streetman structure map: {} implementation lines omitted]\n{}",
+            "[streetman code-map: {} implementation lines omitted; artifacts byte-exact in artifact mode]\n{}",
             omitted,
             out.join("\n")
         )
     }
+}
+
+fn filter_representative_context_lines(input: &str) -> String {
+    input
+        .lines()
+        .filter(|line| {
+            let lower = line.to_ascii_lowercase();
+            [
+                "error",
+                "fatal",
+                "failed",
+                "exception",
+                "todo",
+                "fix",
+                "decision",
+                "test",
+                "warning",
+                "cve",
+                "api",
+                "endpoint",
+            ]
+            .iter()
+            .any(|needle| lower.contains(needle))
+                || protected_tokens(line).len() > 1
+        })
+        .take(60)
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+fn filter_code_structure_lines(input: &str) -> String {
+    input
+        .lines()
+        .filter(|line| {
+            let t = line.trim();
+            t.starts_with("use ")
+                || t.starts_with("import ")
+                || t.starts_with("from ")
+                || t.starts_with("class ")
+                || t.starts_with("def ")
+                || t.starts_with("fn ")
+                || t.starts_with("pub fn ")
+                || t.starts_with("function ")
+                || t.starts_with("const ")
+                || t.starts_with("type ")
+                || t.starts_with("interface ")
+                || t.starts_with("SELECT ")
+                || t.starts_with("CREATE ")
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 fn compress_html(input: &str) -> String {
@@ -948,5 +1202,44 @@ mod tests {
         let result = compress(&input, CompressionMode::Full, ContentDomain::Json);
         assert!(result.compressed.contains("ERROR"));
         assert!(result.savings_percent > 20.0);
+    }
+
+    #[test]
+    fn token_greedy_rejects_homophone_traps() {
+        assert_eq!(token_estimate("for"), token_estimate("4"));
+        assert_eq!(
+            choose_min_token_variant("for", vec!["4".to_string()]),
+            "for"
+        );
+
+        let result = compress(
+            "This change is for the configuration path.",
+            CompressionMode::Full,
+            ContentDomain::Prose,
+        );
+        assert!(!result.compressed.contains('4'));
+        assert!(result.compressed_tokens_estimate <= result.original_tokens_estimate);
+    }
+
+    #[test]
+    fn token_greedy_rejects_out_of_vocab_skeletons() {
+        let skeleton = raw_skeletonize("dependencies", CompressionMode::Full);
+        assert!(token_estimate(&skeleton) >= token_estimate("dependencies"));
+        assert_eq!(
+            token_greedy_word("dependencies", CompressionMode::Full),
+            "dependencies"
+        );
+    }
+
+    #[test]
+    fn never_worse_than_raw_reverts_global_regression() {
+        let input = "dependencies configuration creating rendering reference object inline";
+        let result = compress(input, CompressionMode::Full, ContentDomain::Prose);
+        assert!(result.compressed_tokens_estimate <= result.original_tokens_estimate);
+        assert!(result
+            .certificate
+            .token_guard
+            .starts_with("never-worse-than-raw/"));
+        assert!(result.certificate.token_guard.ends_with("-greedy"));
     }
 }

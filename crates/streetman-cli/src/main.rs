@@ -4,20 +4,24 @@ use std::{
     fs,
     io::{self, Read, Write},
     net::{TcpListener, TcpStream},
-    path::PathBuf,
+    path::{Path, PathBuf},
     process::Command,
 };
 use streetman_core::{
-    accuracy_check,
+    accuracy_check, align_cache_prefix,
     archive::{retrieval_marker, Archive},
     audit::audit_text,
-    bench::{compare_against, run_fixture_bench, run_redteam_bench},
-    check_policy, compress, token_estimate, verify_certificate, CompressionCertificate,
-    CompressionMode, ContentDomain, StreetmanConfig,
+    audit_files,
+    bench::{compare_against, run_fixture_bench, run_redteam_bench, run_token_greedy_bench},
+    build_run_receipt, check_policy, compile_shortlang, compress, gate_diff, lean_instructions,
+    ponytail_h2h_fixture, ponytail_kill_report, prove_diff, prove_diff_with_normal_twin,
+    review_diff, token_estimate, verify_certificate, CompressionCertificate, CompressionMode,
+    ContentDomain, LeanGateConfig, LeanMode, StreetmanConfig,
 };
 
 #[derive(Parser)]
 #[command(name = "streetman")]
+#[command(version)]
 #[command(about = "Local-first compression and context intelligence")]
 struct Cli {
     #[command(subcommand)]
@@ -26,6 +30,18 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
+    Compile {
+        #[arg(value_name = "FILE")]
+        file: Option<PathBuf>,
+        #[arg(long, default_value = "full")]
+        mode: ModeArg,
+        #[arg(long, default_value = "auto")]
+        domain: DomainArg,
+        #[arg(long)]
+        json: bool,
+        #[arg(long)]
+        no_archive: bool,
+    },
     Compress {
         #[arg(value_name = "FILE")]
         file: Option<PathBuf>,
@@ -37,6 +53,47 @@ enum Commands {
         json: bool,
         #[arg(long)]
         no_archive: bool,
+    },
+    Run {
+        #[arg(long)]
+        json: bool,
+        #[arg(last = true, required = true)]
+        command: Vec<String>,
+    },
+    Wrap {
+        agent: String,
+        #[arg(last = true)]
+        args: Vec<String>,
+    },
+    Learn {
+        #[arg(long)]
+        from_run: PathBuf,
+        #[arg(long, default_value = "AGENTS.md")]
+        target: PathBuf,
+    },
+    Memory {
+        #[command(subcommand)]
+        command: MemoryCommand,
+    },
+    CacheAlign {
+        #[arg(long)]
+        policy: Option<PathBuf>,
+        #[arg(long)]
+        memory: Option<PathBuf>,
+        #[arg(long)]
+        retrieval_tools: Option<PathBuf>,
+        #[arg(value_name = "PAYLOAD")]
+        payload: Option<PathBuf>,
+    },
+    Duel {
+        #[arg(long, default_value = "headroom")]
+        against: String,
+        #[arg(long)]
+        trace: PathBuf,
+        #[arg(long)]
+        html: bool,
+        #[arg(long)]
+        out: Option<PathBuf>,
     },
     Retrieve {
         hash: String,
@@ -50,6 +107,10 @@ enum Commands {
     Bench {
         #[command(subcommand)]
         command: BenchCommand,
+    },
+    Lean {
+        #[command(subcommand)]
+        command: LeanCommand,
     },
     Proxy {
         #[arg(long, default_value_t = 8787)]
@@ -132,6 +193,84 @@ enum BenchCommand {
 }
 
 #[derive(Subcommand)]
+enum LeanCommand {
+    Instructions {
+        #[arg(long, default_value = "full")]
+        mode: LeanModeArg,
+        #[arg(long, default_value = "generic")]
+        host: String,
+    },
+    Review {
+        #[arg(value_name = "DIFF")]
+        file: Option<PathBuf>,
+        #[arg(long)]
+        diff: bool,
+        #[arg(long, default_value = "full")]
+        mode: LeanModeArg,
+        #[arg(long)]
+        json: bool,
+    },
+    Audit {
+        #[arg(value_name = "PATH", default_value = ".")]
+        path: PathBuf,
+        #[arg(long, default_value = "full")]
+        mode: LeanModeArg,
+        #[arg(long)]
+        json: bool,
+    },
+    Gate {
+        #[arg(long)]
+        before: Option<String>,
+        #[arg(long, default_value = "HEAD")]
+        after: String,
+        #[arg(long)]
+        file: Option<PathBuf>,
+        #[arg(long, default_value = "full")]
+        mode: LeanModeArg,
+        #[arg(long, default_value_t = 0)]
+        max_new_dependencies: usize,
+        #[arg(long, default_value_t = 12)]
+        max_files_touched: usize,
+        #[arg(long, default_value_t = 75)]
+        max_extension_cost_score: u8,
+        #[arg(long)]
+        allow_missing_check: bool,
+    },
+    Prove {
+        #[arg(value_name = "DIFF")]
+        file: Option<PathBuf>,
+        #[arg(long)]
+        diff: bool,
+        #[arg(long, default_value = "full")]
+        mode: LeanModeArg,
+        #[arg(long)]
+        normal_twin: Option<PathBuf>,
+        #[arg(long = "command")]
+        commands: Vec<String>,
+    },
+    Bench {
+        #[command(subcommand)]
+        command: LeanBenchCommand,
+    },
+    Kill {
+        #[arg(long, default_value = "ponytail")]
+        against: String,
+        #[arg(long)]
+        json: bool,
+    },
+}
+
+#[derive(Subcommand)]
+enum LeanBenchCommand {
+    Run {
+        #[arg(long, default_value = "ponytail")]
+        against: String,
+        #[arg(long)]
+        out: Option<PathBuf>,
+    },
+}
+
+#[derive(Subcommand)]
 enum PolicyCommand {
     Check {
         #[arg(value_name = "FILE")]
@@ -147,6 +286,17 @@ enum PolicyCommand {
         #[arg(long, default_value = ".streetman.toml")]
         config: PathBuf,
     },
+}
+
+#[derive(Subcommand)]
+enum MemoryCommand {
+    Add {
+        #[arg(value_name = "FILE")]
+        file: Option<PathBuf>,
+        #[arg(long, default_value = "manual")]
+        agent: String,
+    },
+    List,
 }
 
 #[derive(Subcommand)]
@@ -170,6 +320,7 @@ enum GatewayCommand {
 
 #[derive(Subcommand)]
 enum McpCommand {
+    Serve,
     Tools,
     Call {
         tool: String,
@@ -186,6 +337,25 @@ enum ModeArg {
     Auto,
 }
 
+#[derive(Clone, Copy, ValueEnum)]
+enum LeanModeArg {
+    Off,
+    Lite,
+    Full,
+    Ultra,
+}
+
+impl From<LeanModeArg> for LeanMode {
+    fn from(value: LeanModeArg) -> Self {
+        match value {
+            LeanModeArg::Off => Self::Off,
+            LeanModeArg::Lite => Self::Lite,
+            LeanModeArg::Full => Self::Full,
+            LeanModeArg::Ultra => Self::Ultra,
+        }
+    }
+}
+
 impl From<ModeArg> for CompressionMode {
     fn from(value: ModeArg) -> Self {
         match value {
@@ -200,10 +370,14 @@ impl From<ModeArg> for CompressionMode {
 #[derive(Clone, Copy, ValueEnum)]
 enum DomainArg {
     Auto,
+    Intent,
+    Context,
     Prose,
     Code,
+    CodeMap,
     Json,
     Logs,
+    Rag,
     Search,
     Diff,
     Html,
@@ -211,16 +385,23 @@ enum DomainArg {
     K8s,
     Docs,
     Shell,
+    History,
+    AgentState,
+    FinalAnswer,
 }
 
 impl From<DomainArg> for ContentDomain {
     fn from(value: DomainArg) -> Self {
         match value {
             DomainArg::Auto => Self::Auto,
+            DomainArg::Intent => Self::Intent,
+            DomainArg::Context => Self::Context,
             DomainArg::Prose => Self::Prose,
             DomainArg::Code => Self::Code,
+            DomainArg::CodeMap => Self::CodeMap,
             DomainArg::Json => Self::Json,
             DomainArg::Logs => Self::Logs,
+            DomainArg::Rag => Self::Rag,
             DomainArg::Search => Self::Search,
             DomainArg::Diff => Self::Diff,
             DomainArg::Html => Self::Html,
@@ -228,6 +409,9 @@ impl From<DomainArg> for ContentDomain {
             DomainArg::K8s => Self::K8s,
             DomainArg::Docs => Self::Docs,
             DomainArg::Shell => Self::Shell,
+            DomainArg::History => Self::History,
+            DomainArg::AgentState => Self::AgentState,
+            DomainArg::FinalAnswer => Self::FinalAnswer,
         }
     }
 }
@@ -247,10 +431,14 @@ impl DomainArg {
     fn as_str(self) -> &'static str {
         match self {
             DomainArg::Auto => "auto",
+            DomainArg::Intent => "intent",
+            DomainArg::Context => "context",
             DomainArg::Prose => "prose",
             DomainArg::Code => "code",
+            DomainArg::CodeMap => "code-map",
             DomainArg::Json => "json",
             DomainArg::Logs => "logs",
+            DomainArg::Rag => "rag",
             DomainArg::Search => "search",
             DomainArg::Diff => "diff",
             DomainArg::Html => "html",
@@ -258,6 +446,9 @@ impl DomainArg {
             DomainArg::K8s => "k8s",
             DomainArg::Docs => "docs",
             DomainArg::Shell => "shell",
+            DomainArg::History => "history",
+            DomainArg::AgentState => "agent-state",
+            DomainArg::FinalAnswer => "final-answer",
         }
     }
 }
@@ -265,6 +456,39 @@ impl DomainArg {
 fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
     match cli.command {
+        Commands::Compile {
+            file,
+            mode,
+            domain,
+            json,
+            no_archive,
+        } => {
+            let input = read_input(file)?;
+            let result = compile_shortlang(&input, mode.into(), domain.into());
+            let archive_record = if !no_archive && result.wire != input {
+                let archive = Archive::open_default()?;
+                let record = archive.store(&input, &result.wire, "compile command")?;
+                archive.log_event("compile", &result)?;
+                Some(record)
+            } else {
+                None
+            };
+            if json {
+                let mut payload = serde_json::to_value(&result)?;
+                if let Some(record) = archive_record {
+                    payload["archive_hash"] = serde_json::json!(record.hash);
+                    payload["retrieval_marker"] = serde_json::json!(retrieval_marker(
+                        payload["archive_hash"].as_str().unwrap_or_default()
+                    ));
+                }
+                println!("{}", serde_json::to_string_pretty(&payload)?);
+            } else {
+                print!("{}", result.wire);
+                if let Some(record) = archive_record {
+                    eprintln!("\n{}", retrieval_marker(&record.hash));
+                }
+            }
+        }
         Commands::Compress {
             file,
             mode,
@@ -298,12 +522,33 @@ fn main() -> anyhow::Result<()> {
                 }
             }
         }
+        Commands::Run { json, command } => run_agent_command(command, json)?,
+        Commands::Wrap { agent, args } => {
+            let mut command = vec![agent];
+            command.extend(args);
+            run_agent_command(command, false)?;
+        }
+        Commands::Learn { from_run, target } => run_learn(from_run, target)?,
+        Commands::Memory { command } => run_memory(command)?,
+        Commands::CacheAlign {
+            policy,
+            memory,
+            retrieval_tools,
+            payload,
+        } => run_cache_align(policy, memory, retrieval_tools, payload)?,
+        Commands::Duel {
+            against,
+            trace,
+            html,
+            out,
+        } => run_duel(&against, trace, html, out)?,
         Commands::Retrieve { hash, query } => {
             let archive = Archive::open_default()?;
             println!("{}", archive.retrieve(&hash, query.as_deref())?);
         }
         Commands::Audit { command } => run_audit(command)?,
         Commands::Bench { command } => run_bench(command)?,
+        Commands::Lean { command } => run_lean(command)?,
         Commands::Proxy { port, provider } => run_proxy(port, &provider)?,
         Commands::Mcp { command } => run_mcp(command)?,
         Commands::Policy { command } => run_policy(command)?,
@@ -339,6 +584,339 @@ fn read_input(file: Option<PathBuf>) -> anyhow::Result<String> {
         io::stdin().read_to_string(&mut input)?;
         Ok(input)
     }
+}
+
+fn run_agent_command(command: Vec<String>, json: bool) -> anyhow::Result<()> {
+    if command.is_empty() {
+        bail!("run requires a command after --");
+    }
+    let output = Command::new(&command[0])
+        .args(&command[1..])
+        .output()
+        .with_context(|| format!("failed to run {}", command.join(" ")))?;
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let combined = if stderr.trim().is_empty() {
+        stdout.to_string()
+    } else {
+        format!("{stdout}\n--- stderr ---\n{stderr}")
+    };
+
+    let compiled = compile_shortlang(&combined, CompressionMode::Full, ContentDomain::Context);
+    let archive = Archive::open_default()?;
+    let archive_record = archive.store(&combined, &compiled.wire, "agent run output")?;
+    archive.log_event("run_compile", &compiled)?;
+
+    let preliminary = build_run_receipt(
+        command.clone(),
+        output.status.code(),
+        &combined,
+        &compiled,
+        vec![archive_record.hash.clone()],
+        String::new(),
+    );
+    let run_dir = dirs::home_dir()
+        .context("home directory not available")?
+        .join(".streetman")
+        .join("runs")
+        .join(&preliminary.run_id);
+    fs::create_dir_all(&run_dir)?;
+    fs::write(run_dir.join("original.txt"), &combined)?;
+    fs::write(run_dir.join("shortlang.txt"), &compiled.wire)?;
+
+    let receipt_path = run_dir.join("receipt.json");
+    let receipt = build_run_receipt(
+        command,
+        output.status.code(),
+        &combined,
+        &compiled,
+        vec![archive_record.hash],
+        receipt_path.display().to_string(),
+    );
+    fs::write(&receipt_path, serde_json::to_string_pretty(&receipt)?)?;
+
+    if json {
+        println!("{}", serde_json::to_string_pretty(&receipt)?);
+    } else {
+        print!("{stdout}");
+        eprint!("{stderr}");
+        eprintln!(
+            "\nstreetman receipt: saved {:.1}% · tests {} · artifacts protected {} · compressor mutations {} · retrieval misses {} · replay {}",
+            receipt.savings_percent,
+            receipt
+                .tests_passed
+                .map(|v| if v { "pass" } else { "fail" })
+                .unwrap_or("n/a"),
+            receipt.artifact_report.protected_artifacts,
+            receipt.artifact_report.compressor_mutated_artifacts,
+            receipt.artifact_report.retrieval_misses,
+            receipt.replay_path
+        );
+    }
+
+    if !output.status.success() {
+        bail!(
+            "wrapped command exited with {}",
+            output.status.code().unwrap_or(1)
+        );
+    }
+    Ok(())
+}
+
+fn run_learn(from_run: PathBuf, target: PathBuf) -> anyhow::Result<()> {
+    let raw = fs::read_to_string(&from_run)
+        .with_context(|| format!("failed to read run receipt {}", from_run.display()))?;
+    let receipt: streetman_core::RunReceipt = serde_json::from_str(&raw)?;
+    let note = format!(
+        "\n\n## Streetman Learned Run {}\n- cmd: `{}`\n- saved: {:.1}%\n- tests: {}\n- artifacts protected: {}\n- compressor mutations: {}\n- replay: `{}`\n",
+        receipt.run_id,
+        receipt.command.join(" "),
+        receipt.savings_percent,
+        receipt
+            .tests_passed
+            .map(|v| if v { "pass" } else { "fail" })
+            .unwrap_or("n/a"),
+        receipt.artifact_report.protected_artifacts,
+        receipt.artifact_report.compressor_mutated_artifacts,
+        receipt.replay_path
+    );
+    let mut existing = fs::read_to_string(&target).unwrap_or_default();
+    if !existing.contains(&format!("Streetman Learned Run {}", receipt.run_id)) {
+        existing.push_str(&note);
+        fs::write(&target, existing)?;
+    }
+    println!("{}", target.display());
+    Ok(())
+}
+
+fn run_memory(command: MemoryCommand) -> anyhow::Result<()> {
+    let path = memory_path()?;
+    match command {
+        MemoryCommand::Add { file, agent } => {
+            let input = read_input(file)?;
+            let compiled =
+                compile_shortlang(&input, CompressionMode::Full, ContentDomain::AgentState);
+            let mut entries = read_memory_entries(&path)?;
+            let hash = blake3::hash(compiled.wire.as_bytes()).to_hex().to_string();
+            if !entries.iter().any(|entry| entry["hash"] == hash) {
+                entries.push(serde_json::json!({
+                    "hash": hash,
+                    "agent": agent,
+                    "created_at": chrono::Utc::now().to_rfc3339(),
+                    "wire": compiled.wire,
+                    "tokens": compiled.wire_tokens_estimate
+                }));
+                write_memory_entries(&path, &entries)?;
+            }
+            println!("{}", path.display());
+        }
+        MemoryCommand::List => {
+            let entries = read_memory_entries(&path)?;
+            println!("{}", serde_json::to_string_pretty(&entries)?);
+        }
+    }
+    Ok(())
+}
+
+fn memory_path() -> anyhow::Result<PathBuf> {
+    let dir = dirs::home_dir()
+        .context("home directory not available")?
+        .join(".streetman")
+        .join("memory");
+    fs::create_dir_all(&dir)?;
+    Ok(dir.join("shared.json"))
+}
+
+fn read_memory_entries(path: &PathBuf) -> anyhow::Result<Vec<serde_json::Value>> {
+    if !path.exists() {
+        return Ok(Vec::new());
+    }
+    let raw = fs::read_to_string(path)?;
+    Ok(serde_json::from_str(&raw).unwrap_or_default())
+}
+
+fn write_memory_entries(path: &PathBuf, entries: &[serde_json::Value]) -> anyhow::Result<()> {
+    fs::write(path, serde_json::to_string_pretty(entries)?)?;
+    Ok(())
+}
+
+fn run_cache_align(
+    policy: Option<PathBuf>,
+    memory: Option<PathBuf>,
+    retrieval_tools: Option<PathBuf>,
+    payload: Option<PathBuf>,
+) -> anyhow::Result<()> {
+    let policy = read_optional(policy)?;
+    let memory = read_optional(memory)?;
+    let retrieval_tools = read_optional(retrieval_tools)?;
+    let payload = read_input(payload)?;
+    println!(
+        "{}",
+        align_cache_prefix(&policy, &memory, &retrieval_tools, &payload)
+    );
+    Ok(())
+}
+
+fn read_optional(path: Option<PathBuf>) -> anyhow::Result<String> {
+    if let Some(path) = path {
+        fs::read_to_string(&path).with_context(|| format!("failed to read {}", path.display()))
+    } else {
+        Ok(String::new())
+    }
+}
+
+fn run_duel(against: &str, trace: PathBuf, html: bool, out: Option<PathBuf>) -> anyhow::Result<()> {
+    let raw = fs::read_to_string(&trace)
+        .with_context(|| format!("failed to read trace {}", trace.display()))?;
+    let trace_cases = parse_trace_cases(&raw)?;
+    let cases = trace_cases
+        .iter()
+        .map(|case| {
+            let domain = case
+                .domain
+                .as_deref()
+                .unwrap_or("auto")
+                .parse()
+                .unwrap_or(ContentDomain::Auto);
+            let compiled = compile_shortlang(&case.input, CompressionMode::Full, domain);
+            let headroom = estimate_headroom_baseline(&compiled.route.domain, &case.input);
+            serde_json::json!({
+                "name": case.name,
+                "domain": format!("{:?}", compiled.route.domain),
+                "streetman_tokens": compiled.wire_tokens_estimate,
+                "streetman_savings_percent": compiled.savings_percent,
+                "headroom_estimated_savings_percent": headroom,
+                "streetman_delta_pp": compiled.savings_percent - headroom,
+                "artifact_mutations": compiled.compressor_mutated_artifacts,
+                "protected_artifacts": compiled.protected_artifacts,
+                "accuracy_score": compiled.compression.certificate.accuracy_score
+            })
+        })
+        .collect::<Vec<_>>();
+    let avg_delta = if cases.is_empty() {
+        0.0
+    } else {
+        cases
+            .iter()
+            .filter_map(|case| case["streetman_delta_pp"].as_f64())
+            .sum::<f64>()
+            / cases.len() as f64
+    };
+    let report = serde_json::json!({
+        "suite": "streetman-duel",
+        "against": against,
+        "trace": trace.display().to_string(),
+        "status": "streetman-measured-headroom-baseline-estimated",
+        "avg_delta_pp": avg_delta,
+        "cases": cases,
+        "note": "Use committed Headroom run artifacts or install Headroom CLI for external replay before making public absolute-win claims."
+    });
+    let rendered = if html {
+        render_duel_html(&report)
+    } else {
+        serde_json::to_string_pretty(&report)?
+    };
+    if let Some(path) = out {
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        fs::write(&path, rendered)?;
+        println!("{}", path.display());
+    } else {
+        println!("{rendered}");
+    }
+    Ok(())
+}
+
+#[derive(Debug)]
+struct TraceCase {
+    name: String,
+    input: String,
+    domain: Option<String>,
+}
+
+fn parse_trace_cases(raw: &str) -> anyhow::Result<Vec<TraceCase>> {
+    if let Ok(value) = serde_json::from_str::<serde_json::Value>(raw) {
+        let array = value
+            .get("cases")
+            .and_then(|v| v.as_array())
+            .cloned()
+            .or_else(|| value.as_array().cloned())
+            .unwrap_or_default();
+        if !array.is_empty() {
+            return Ok(array
+                .into_iter()
+                .enumerate()
+                .map(|(idx, item)| TraceCase {
+                    name: item["name"]
+                        .as_str()
+                        .map(str::to_string)
+                        .unwrap_or_else(|| format!("case-{idx}")),
+                    input: item["input"]
+                        .as_str()
+                        .or_else(|| item["text"].as_str())
+                        .unwrap_or_default()
+                        .to_string(),
+                    domain: item["domain"].as_str().map(str::to_string),
+                })
+                .collect());
+        }
+    }
+    Ok(vec![TraceCase {
+        name: "raw-trace".to_string(),
+        input: raw.to_string(),
+        domain: None,
+    }])
+}
+
+fn estimate_headroom_baseline(domain: &ContentDomain, input: &str) -> f64 {
+    match domain {
+        ContentDomain::Logs => 98.1,
+        ContentDomain::Search => 83.0,
+        ContentDomain::Json => 90.0,
+        ContentDomain::CodeMap | ContentDomain::Code => 47.0,
+        ContentDomain::Context | ContentDomain::Rag | ContentDomain::History => {
+            if input.len() > 50_000 {
+                92.0
+            } else {
+                73.0
+            }
+        }
+        _ => 60.0,
+    }
+}
+
+fn render_duel_html(report: &serde_json::Value) -> String {
+    let rows = report["cases"]
+        .as_array()
+        .unwrap_or(&Vec::new())
+        .iter()
+        .map(|case| {
+            format!(
+                "<tr><td>{}</td><td>{}</td><td>{:.1}</td><td>{:.1}</td><td>{:.1}</td><td>{}</td><td>{}</td></tr>",
+                html_escape(case["name"].as_str().unwrap_or_default()),
+                html_escape(case["domain"].as_str().unwrap_or_default()),
+                case["streetman_savings_percent"].as_f64().unwrap_or_default(),
+                case["headroom_estimated_savings_percent"].as_f64().unwrap_or_default(),
+                case["streetman_delta_pp"].as_f64().unwrap_or_default(),
+                case["artifact_mutations"].as_i64().unwrap_or_default(),
+                case["accuracy_score"].as_i64().unwrap_or_default()
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("");
+    format!(
+        r#"<!doctype html><meta charset="utf-8"><title>Streetman Duel</title>
+<style>body{{font-family:system-ui;margin:24px;background:#101315;color:#edf6ef}}table{{border-collapse:collapse;width:100%}}td,th{{border-bottom:1px solid #2a3438;padding:10px;text-align:left}}th{{color:#91a29a}}.win{{color:#58f28b}}</style>
+<h1>Streetman Duel: {}</h1><p>Status: {}</p><p class="win">Average delta: {:.1}pp</p>
+<table><thead><tr><th>Case</th><th>Domain</th><th>Streetman %</th><th>Headroom baseline %</th><th>Delta pp</th><th>Artifact mutations</th><th>Accuracy</th></tr></thead><tbody>{}</tbody></table>
+<p>{}</p>"#,
+        html_escape(report["against"].as_str().unwrap_or_default()),
+        html_escape(report["status"].as_str().unwrap_or_default()),
+        report["avg_delta_pp"].as_f64().unwrap_or_default(),
+        rows,
+        html_escape(report["note"].as_str().unwrap_or_default())
+    )
 }
 
 fn run_audit(command: AuditCommand) -> anyhow::Result<()> {
@@ -401,6 +979,7 @@ fn run_bench(command: BenchCommand) -> anyhow::Result<()> {
             let result = match suite.as_str() {
                 "absolute-win" => run_fixture_bench(),
                 "redteam" | "redteam-safety" => run_redteam_bench(),
+                "token-greedy" | "case1-case2" => run_token_greedy_bench(),
                 other => bail!("unknown bench suite: {other}"),
             };
             let json = serde_json::to_string_pretty(&result)?;
@@ -420,14 +999,16 @@ fn run_bench(command: BenchCommand) -> anyhow::Result<()> {
         BenchCommand::AccuracyFixtures => {
             let fixture = run_fixture_bench();
             let redteam = run_redteam_bench();
+            let token_greedy = run_token_greedy_bench();
             println!(
                 "{}",
                 serde_json::to_string_pretty(&serde_json::json!({
                     "absolute_win": fixture,
-                    "redteam": redteam
+                    "redteam": redteam,
+                    "token_greedy": token_greedy
                 }))?
             );
-            if !fixture.gates_passed || !redteam.gates_passed {
+            if !fixture.gates_passed || !redteam.gates_passed || !token_greedy.gates_passed {
                 bail!("accuracy fixtures failed");
             }
         }
@@ -475,6 +1056,285 @@ fn run_bench(command: BenchCommand) -> anyhow::Result<()> {
         }
     }
     Ok(())
+}
+
+fn run_lean(command: LeanCommand) -> anyhow::Result<()> {
+    match command {
+        LeanCommand::Instructions { mode, host } => {
+            println!("{}", lean_instructions(mode.into(), &host));
+        }
+        LeanCommand::Review {
+            file,
+            diff,
+            mode,
+            json,
+        } => {
+            let raw = read_lean_diff(file, diff, None, "HEAD")?;
+            let report = review_diff(&raw, mode.into());
+            if json {
+                println!("{}", serde_json::to_string_pretty(&report)?);
+            } else {
+                println!("{}", render_lean_report(&report));
+            }
+        }
+        LeanCommand::Audit { path, mode, json } => {
+            let files = collect_audit_files(&path)?;
+            let report = audit_files(&files, mode.into());
+            if json {
+                println!("{}", serde_json::to_string_pretty(&report)?);
+            } else {
+                println!("{}", render_lean_report(&report));
+            }
+        }
+        LeanCommand::Gate {
+            before,
+            after,
+            file,
+            mode,
+            max_new_dependencies,
+            max_files_touched,
+            max_extension_cost_score,
+            allow_missing_check,
+        } => {
+            let raw = read_lean_diff(file, true, before.as_deref(), &after)?;
+            let result = gate_diff(
+                &raw,
+                mode.into(),
+                LeanGateConfig {
+                    max_new_dependencies,
+                    max_files_touched,
+                    require_runnable_check: !allow_missing_check,
+                    max_extension_cost_score,
+                },
+            );
+            println!("{}", serde_json::to_string_pretty(&result)?);
+            if !result.passed {
+                bail!("lean gate failed");
+            }
+        }
+        LeanCommand::Prove {
+            file,
+            diff,
+            mode,
+            normal_twin,
+            commands,
+        } => {
+            let raw = read_lean_diff(file, diff, None, "HEAD")?;
+            let normal_twin = read_optional(normal_twin)?;
+            let cert = if normal_twin.is_empty() {
+                prove_diff(&raw, mode.into(), commands)
+            } else {
+                prove_diff_with_normal_twin(&raw, mode.into(), commands, Some(&normal_twin))
+            };
+            println!("{}", serde_json::to_string_pretty(&cert)?);
+        }
+        LeanCommand::Bench { command } => match command {
+            LeanBenchCommand::Run { against, out } => {
+                let result = ponytail_h2h_fixture(&against);
+                let json = serde_json::to_string_pretty(&result)?;
+                if let Some(path) = out {
+                    if let Some(parent) = path.parent() {
+                        fs::create_dir_all(parent)?;
+                    }
+                    fs::write(&path, json)?;
+                    println!("{}", path.display());
+                } else {
+                    println!("{json}");
+                }
+            }
+        },
+        LeanCommand::Kill { against, json } => {
+            if against != "ponytail" && against != "DietrichGebert/ponytail" {
+                bail!("only ponytail kill reports are implemented");
+            }
+            let report = ponytail_kill_report();
+            if json {
+                println!("{}", serde_json::to_string_pretty(&report)?);
+            } else {
+                println!("{}", render_kill_report(&report));
+            }
+        }
+    }
+    Ok(())
+}
+
+fn read_lean_diff(
+    file: Option<PathBuf>,
+    use_git_diff: bool,
+    before: Option<&str>,
+    after: &str,
+) -> anyhow::Result<String> {
+    if let Some(path) = file {
+        return fs::read_to_string(&path)
+            .with_context(|| format!("failed to read diff {}", path.display()));
+    }
+    if use_git_diff {
+        return run_git_diff(before, after);
+    }
+    run_git_diff(None, after)
+}
+
+fn run_git_diff(before: Option<&str>, after: &str) -> anyhow::Result<String> {
+    let mut cmd = Command::new("git");
+    cmd.arg("diff");
+    if let Some(before) = before {
+        cmd.arg(before).arg(after);
+    }
+    let output = cmd.output().context("failed to run git diff")?;
+    if !output.status.success() {
+        bail!(
+            "git diff failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+    Ok(String::from_utf8_lossy(&output.stdout).to_string())
+}
+
+fn collect_audit_files(root: &Path) -> anyhow::Result<Vec<(String, String)>> {
+    let mut files = Vec::new();
+    if root.is_file() {
+        if should_audit_path(root) {
+            files.push((
+                root.display().to_string(),
+                fs::read_to_string(root)
+                    .with_context(|| format!("failed to read {}", root.display()))?,
+            ));
+        }
+        return Ok(files);
+    }
+    collect_audit_files_inner(root, root, &mut files)?;
+    Ok(files)
+}
+
+fn collect_audit_files_inner(
+    root: &Path,
+    dir: &Path,
+    files: &mut Vec<(String, String)>,
+) -> anyhow::Result<()> {
+    for entry in fs::read_dir(dir).with_context(|| format!("failed to read {}", dir.display()))? {
+        let entry = entry?;
+        let path = entry.path();
+        if should_skip_audit_path(&path) {
+            continue;
+        }
+        if path.is_dir() {
+            collect_audit_files_inner(root, &path, files)?;
+        } else if should_audit_path(&path) {
+            let label = path
+                .strip_prefix(root)
+                .unwrap_or(&path)
+                .display()
+                .to_string();
+            files.push((
+                label,
+                fs::read_to_string(&path)
+                    .with_context(|| format!("failed to read {}", path.display()))?,
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn should_skip_audit_path(path: &Path) -> bool {
+    path.file_name()
+        .and_then(|name| name.to_str())
+        .is_some_and(|name| {
+            matches!(
+                name,
+                ".git" | "target" | "node_modules" | ".next" | "dist" | "coverage"
+            )
+        })
+}
+
+fn should_audit_path(path: &Path) -> bool {
+    path.extension()
+        .and_then(|ext| ext.to_str())
+        .is_some_and(|ext| {
+            matches!(
+                ext,
+                "rs" | "ts"
+                    | "tsx"
+                    | "js"
+                    | "jsx"
+                    | "py"
+                    | "go"
+                    | "java"
+                    | "kt"
+                    | "rb"
+                    | "php"
+                    | "md"
+                    | "toml"
+                    | "json"
+                    | "yaml"
+                    | "yml"
+                    | "txt"
+            )
+        })
+}
+
+fn render_lean_report(report: &streetman_core::LeanReport) -> String {
+    let mut out = String::new();
+    out.push_str(&format!(
+        "Streetman Lean {}\nstatus={} mode={} files={} +{} -{} deps_added={} checks={} shortcuts={} extension_cost={}\n",
+        report.scope,
+        report.status,
+        report.mode,
+        report.files_touched,
+        report.loc_added,
+        report.loc_removed,
+        report.dependencies_added.len(),
+        report.runnable_checks,
+        report.shortcut_comments,
+        report.extension_cost_score
+    ));
+    if report.findings.is_empty() {
+        out.push_str("Lean already. Ship.\n");
+    } else {
+        for finding in &report.findings {
+            let loc = match (&finding.path, finding.line) {
+                (Some(path), Some(line)) => format!("{path}:L{line}"),
+                (Some(path), None) => path.clone(),
+                (None, Some(line)) => format!("L{line}"),
+                (None, None) => "diff".to_string(),
+            };
+            out.push_str(&format!(
+                "{}: {}: {}. {}. (-{} lines)\n",
+                loc,
+                finding.tag,
+                finding.message,
+                finding.replacement,
+                finding.estimated_lines_saved.max(0)
+            ));
+        }
+        out.push_str(&format!(
+            "net: -{} lines possible.\n",
+            report.estimated_lines_saved
+        ));
+    }
+    out
+}
+
+fn render_kill_report(report: &streetman_core::LeanKillReport) -> String {
+    let mut out = String::new();
+    out.push_str(&format!(
+        "Streetman vs {}\nfeature_kill={}\nverdict={}\npublic_performance_claim_ready={}\n",
+        report.against,
+        if report.feature_kill { "YES" } else { "NO" },
+        report.verdict,
+        report.public_performance_claim_ready
+    ));
+    for feature in &report.parity {
+        out.push_str(&format!(
+            "- {}: {} ({})\n",
+            feature.feature, feature.status, feature.streetman
+        ));
+    }
+    out.push_str("extras:\n");
+    for extra in &report.streetman_extra_features {
+        out.push_str(&format!("- {extra}\n"));
+    }
+    out.push_str(&format!("caveat: {}\n", report.caveat));
+    out
 }
 
 fn run_policy(command: PolicyCommand) -> anyhow::Result<()> {
@@ -588,6 +1448,27 @@ fn run_gateway(command: GatewayCommand) -> anyhow::Result<()> {
 
 fn run_mcp(command: McpCommand) -> anyhow::Result<()> {
     match command {
+        McpCommand::Serve => {
+            let mut input = String::new();
+            io::stdin().read_to_string(&mut input)?;
+            if input.trim().is_empty() {
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&serde_json::json!({
+                        "status": "ready",
+                        "transport": "stdio-json",
+                        "tools": ["streetman_compress", "streetman_compile", "streetman_retrieve", "streetman_stats", "streetman_accuracy_check"]
+                    }))?
+                );
+            } else {
+                for line in input.lines().filter(|line| !line.trim().is_empty()) {
+                    let value: serde_json::Value = serde_json::from_str(line)?;
+                    let tool = value["tool"].as_str().unwrap_or_default();
+                    let output = handle_mcp_tool(tool, value.get("input").unwrap_or(&value))?;
+                    println!("{}", serde_json::to_string(&output)?);
+                }
+            }
+        }
         McpCommand::Tools => {
             println!(
                 "{}",
@@ -596,7 +1477,12 @@ fn run_mcp(command: McpCommand) -> anyhow::Result<()> {
                         {
                             "name": "streetman_compress",
                             "description": "Compress text locally and return a proof-carrying certificate.",
-                            "input": {"text": "string", "mode": "lite|full|ultra|auto", "domain": "auto|prose|json|logs|code|search|diff|html"}
+                            "input": {"text": "string", "mode": "lite|full|ultra|auto", "domain": "auto|intent|context|prose|json|logs|rag|code|code-map|search|diff|html|history|agent-state|final-answer"}
+                        },
+                        {
+                            "name": "streetman_compile",
+                            "description": "Compile prompt/context/history/tool output into Streetman ShortLang.",
+                            "input": {"text": "string", "mode": "lite|full|ultra|auto", "domain": "auto|intent|context|rag|history|agent-state"}
                         },
                         {
                             "name": "streetman_retrieve",
@@ -624,49 +1510,68 @@ fn run_mcp(command: McpCommand) -> anyhow::Result<()> {
             } else {
                 serde_json::from_str(&raw)?
             };
-            let output = match tool.as_str() {
-                "streetman_compress" => {
-                    let text = value["text"].as_str().unwrap_or_default();
-                    let mode = value["mode"]
-                        .as_str()
-                        .unwrap_or("full")
-                        .parse()
-                        .unwrap_or(CompressionMode::Full);
-                    let domain = value["domain"]
-                        .as_str()
-                        .unwrap_or("auto")
-                        .parse()
-                        .unwrap_or(ContentDomain::Auto);
-                    serde_json::to_value(compress(text, mode, domain))?
-                }
-                "streetman_retrieve" => {
-                    let hash = value["hash"].as_str().context("hash required")?;
-                    let query = value["query"].as_str();
-                    let archive = Archive::open_default()?;
-                    serde_json::json!({"text": archive.retrieve(hash, query)?})
-                }
-                "streetman_stats" => {
-                    let archive = Archive::open_default()?;
-                    let (count, original, compressed) = archive.totals()?;
-                    serde_json::json!({
-                        "archive_records": count,
-                        "original_tokens_estimate": original,
-                        "compressed_tokens_estimate": compressed,
-                        "telemetry": "off",
-                        "absolute_win": absolute_win_status()
-                    })
-                }
-                "streetman_accuracy_check" => {
-                    let original = value["original"].as_str().unwrap_or_default();
-                    let candidate = value["candidate"].as_str().unwrap_or_default();
-                    serde_json::to_value(accuracy_check(original, candidate))?
-                }
-                other => bail!("unknown MCP tool: {other}"),
-            };
+            let output = handle_mcp_tool(&tool, &value)?;
             println!("{}", serde_json::to_string_pretty(&output)?);
         }
     }
     Ok(())
+}
+
+fn handle_mcp_tool(tool: &str, value: &serde_json::Value) -> anyhow::Result<serde_json::Value> {
+    let output = match tool {
+        "streetman_compress" => {
+            let text = value["text"].as_str().unwrap_or_default();
+            let mode = value["mode"]
+                .as_str()
+                .unwrap_or("full")
+                .parse()
+                .unwrap_or(CompressionMode::Full);
+            let domain = value["domain"]
+                .as_str()
+                .unwrap_or("auto")
+                .parse()
+                .unwrap_or(ContentDomain::Auto);
+            serde_json::to_value(compress(text, mode, domain))?
+        }
+        "streetman_compile" => {
+            let text = value["text"].as_str().unwrap_or_default();
+            let mode = value["mode"]
+                .as_str()
+                .unwrap_or("full")
+                .parse()
+                .unwrap_or(CompressionMode::Full);
+            let domain = value["domain"]
+                .as_str()
+                .unwrap_or("auto")
+                .parse()
+                .unwrap_or(ContentDomain::Auto);
+            serde_json::to_value(compile_shortlang(text, mode, domain))?
+        }
+        "streetman_retrieve" => {
+            let hash = value["hash"].as_str().context("hash required")?;
+            let query = value["query"].as_str();
+            let archive = Archive::open_default()?;
+            serde_json::json!({"text": archive.retrieve(hash, query)?})
+        }
+        "streetman_stats" => {
+            let archive = Archive::open_default()?;
+            let (count, original, compressed) = archive.totals()?;
+            serde_json::json!({
+                "archive_records": count,
+                "original_tokens_estimate": original,
+                "compressed_tokens_estimate": compressed,
+                "telemetry": "off",
+                "absolute_win": absolute_win_status()
+            })
+        }
+        "streetman_accuracy_check" => {
+            let original = value["original"].as_str().unwrap_or_default();
+            let candidate = value["candidate"].as_str().unwrap_or_default();
+            serde_json::to_value(accuracy_check(original, candidate))?
+        }
+        other => bail!("unknown MCP tool: {other}"),
+    };
+    Ok(output)
 }
 
 fn run_proxy(port: u16, provider: &str) -> anyhow::Result<()> {
@@ -732,6 +1637,34 @@ fn handle_proxy_stream(mut stream: TcpStream, provider: &str) -> anyhow::Result<
                 "telemetry": "off"
             }),
         )
+    } else if req.starts_with("POST /v1/chat/completions") || req.starts_with("POST /v1/responses")
+    {
+        let path = req
+            .lines()
+            .next()
+            .and_then(|line| line.split_whitespace().nth(1))
+            .unwrap_or("/v1/chat/completions");
+        let body = req.split("\r\n\r\n").nth(1).unwrap_or_default();
+        let parsed: serde_json::Value = serde_json::from_str(body).unwrap_or_default();
+        let transformed = transform_llm_payload(parsed);
+        if let Ok(upstream) = std::env::var("STREETMAN_UPSTREAM_URL") {
+            let auth = req
+                .lines()
+                .find(|line| line.to_ascii_lowercase().starts_with("authorization:"))
+                .map(str::to_string);
+            let forwarded = forward_with_curl(&upstream, path, auth.as_deref(), &transformed)?;
+            ("200 OK", forwarded)
+        } else {
+            (
+                "200 OK",
+                serde_json::json!({
+                    "status": "transformed",
+                    "provider": provider,
+                    "upstream_forwarding": "set STREETMAN_UPSTREAM_URL to forward",
+                    "payload": transformed
+                }),
+            )
+        }
     } else {
         ("404 Not Found", serde_json::json!({"error": "not found"}))
     };
@@ -743,6 +1676,55 @@ fn handle_proxy_stream(mut stream: TcpStream, provider: &str) -> anyhow::Result<
     );
     stream.write_all(response.as_bytes())?;
     Ok(())
+}
+
+fn transform_llm_payload(mut value: serde_json::Value) -> serde_json::Value {
+    if let Some(messages) = value.get_mut("messages").and_then(|v| v.as_array_mut()) {
+        for message in messages {
+            if let Some(content) = message.get_mut("content") {
+                if let Some(text) = content.as_str() {
+                    let compiled =
+                        compile_shortlang(text, CompressionMode::Full, ContentDomain::Auto);
+                    *content = serde_json::Value::String(compiled.wire);
+                }
+            }
+        }
+    }
+    if let Some(input) = value.get_mut("input") {
+        if let Some(text) = input.as_str() {
+            let compiled = compile_shortlang(text, CompressionMode::Full, ContentDomain::Auto);
+            *input = serde_json::Value::String(compiled.wire);
+        }
+    }
+    value
+}
+
+fn forward_with_curl(
+    upstream: &str,
+    path: &str,
+    auth: Option<&str>,
+    payload: &serde_json::Value,
+) -> anyhow::Result<serde_json::Value> {
+    let url = format!(
+        "{}/{}",
+        upstream.trim_end_matches('/'),
+        path.trim_start_matches('/')
+    );
+    let body = serde_json::to_string(payload)?;
+    let mut cmd = Command::new("curl");
+    cmd.args(["-sS", "-X", "POST", "-H", "Content-Type: application/json"]);
+    if let Some(auth) = auth {
+        cmd.args(["-H", auth]);
+    }
+    let output = cmd.arg("--data-binary").arg(body).arg(url).output()?;
+    if !output.status.success() {
+        bail!(
+            "upstream forwarding failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+    let raw = String::from_utf8_lossy(&output.stdout);
+    Ok(serde_json::from_str(&raw).unwrap_or_else(|_| serde_json::json!({"raw": raw})))
 }
 
 fn absolute_win_status() -> String {

@@ -1,0 +1,26 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$STREETMAN_PLUGIN_ROOT/hooks/streetman-activate.js\"",
+            "commandWindows": "node \"$env:STREETMAN_PLUGIN_ROOT/hooks/streetman-activate.js\""
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$STREETMAN_PLUGIN_ROOT/hooks/streetman-mode-tracker.js\"",
+            "commandWindows": "node \"$env:STREETMAN_PLUGIN_ROOT/hooks/streetman-mode-tracker.js\""
+          }
+        ]
+      }
+    ]
+  }
+}
