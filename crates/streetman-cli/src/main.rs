@@ -13,8 +13,8 @@ use streetman_core::{
     audit::audit_text,
     audit_files,
     bench::{
-        compare_against, run_all_lanes_bench, run_final_kf_bench, run_fixture_bench,
-        run_redteam_bench, run_token_greedy_bench,
+        compare_against, run_absolute_win_v2_bench, run_all_lanes_bench, run_final_kf_bench,
+        run_fixture_bench, run_redteam_bench, run_token_greedy_bench,
     },
     build_run_receipt, check_policy, classify_sensitive, compile_shortlang, compress,
     decode_archive_free, default_protected_config_path, elide_unchanged_regions,
@@ -1092,6 +1092,7 @@ fn run_bench(command: BenchCommand) -> anyhow::Result<()> {
                 "token-greedy" | "case1-case2" => run_token_greedy_bench(),
                 "final-case" | "final-case-0.3" => run_final_kf_bench(),
                 "all-lanes" | "all-lanes-1.0" => run_all_lanes_bench(),
+                "absolute-win-2" | "absolute-win-2.0" | "all-17" => run_absolute_win_v2_bench(),
                 other => bail!("unknown bench suite: {other}"),
             };
             let json = serde_json::to_string_pretty(&result)?;
@@ -1114,6 +1115,7 @@ fn run_bench(command: BenchCommand) -> anyhow::Result<()> {
             let token_greedy = run_token_greedy_bench();
             let final_kf = run_final_kf_bench();
             let all_lanes = run_all_lanes_bench();
+            let absolute_win_v2 = run_absolute_win_v2_bench();
             println!(
                 "{}",
                 serde_json::to_string_pretty(&serde_json::json!({
@@ -1121,7 +1123,8 @@ fn run_bench(command: BenchCommand) -> anyhow::Result<()> {
                     "redteam": redteam,
                     "token_greedy": token_greedy,
                     "final_kf": final_kf,
-                    "all_lanes": all_lanes
+                    "all_lanes": all_lanes,
+                    "absolute_win_v2": absolute_win_v2
                 }))?
             );
             if !fixture.gates_passed
@@ -1129,6 +1132,7 @@ fn run_bench(command: BenchCommand) -> anyhow::Result<()> {
                 || !token_greedy.gates_passed
                 || !final_kf.gates_passed
                 || !all_lanes.gates_passed
+                || !absolute_win_v2.gates_passed
             {
                 bail!("accuracy fixtures failed");
             }

@@ -1,7 +1,7 @@
 {
   "name": "streetman",
-  "version": "1.0.1",
-  "description": "All-lanes local compression, Lean mode, code transport, and enterprise controls.",
+  "version": "2.0.0",
+  "description": "Absolute-win v2 gated compression, Lean mode, code transport, and enterprise controls.",
   "author": { "name": "Streetman" },
   "homepage": "https://github.com/efij/streetman",
   "repository": "https://github.com/efij/streetman",
@@ -11,7 +11,7 @@
   "interface": {
     "displayName": "Streetman",
     "shortDescription": "All-lanes local compression + Lean",
-    "longDescription": "Deterministic never-worse token compression plus Streetman Lean, anchored edit transport, fit/decode, schema/log dedup, proof certificates, and offline enterprise controls.",
+    "longDescription": "Deterministic never-worse token compression plus Streetman Lean, anchored edit transport, fit/decode, schema/log dedup, proof certificates, published-baseline gates, and offline enterprise controls.",
     "developerName": "Streetman",
     "category": "Productivity",
     "capabilities": ["Instructions", "Lifecycle hooks"],

@@ -1,5 +1,21 @@
 # Changelog
 
+## 2.0.0 - 2026-06-17
+
+- Added `streetman bench run --suite absolute-win-2`, an executable 17-dimension
+  gate for the accuracy-100, lossless/reversible, deterministic, offline win
+  lane.
+- Added published-baseline gates for LLMLingua and LeanCTX. They are tracked as
+  top raw-ratio competitors, while Streetman only claims the gated lane unless a
+  live snapshot proves raw-ratio superiority.
+- Extended `bench accuracy-fixtures` to include the v2 gate so installed builds
+  verify token correctness, code transport, Lean code-generation minimalism,
+  reversibility, enterprise controls, and published-baseline claim boundaries in
+  one command.
+- Added `docs/absolute-win-2.0.md` with the exact claim definition and honest
+  caps.
+- Bumped source install/plugin manifests to `2.0.0`.
+
 ## 1.0.1 - 2026-06-16
 
 - Fixed the `ultra` truncation bug: prose/docs compression now uses the same

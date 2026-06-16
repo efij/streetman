@@ -205,6 +205,21 @@ fn cli_all_lanes_bench_smoke() {
 }
 
 #[test]
+fn cli_absolute_win_v2_bench_smoke() {
+    let output = Command::new(env!("CARGO_BIN_EXE_streetman"))
+        .args(["bench", "run", "--suite", "absolute-win-2"])
+        .stdout(Stdio::piped())
+        .output()
+        .expect("run absolute win v2 bench");
+    assert!(output.status.success());
+    let stdout = String::from_utf8(output.stdout).expect("utf8");
+    assert!(stdout.contains("absolute-win-2.0"));
+    assert!(stdout.contains("published-baseline-llmlingua-lossy-gate"));
+    assert!(stdout.contains("published-baseline-leanctx-network-lossy-gate"));
+    assert!(stdout.contains("\"gates_passed\": true"));
+}
+
+#[test]
 fn cli_fit_decode_tokenizer_security_scan_smoke() {
     let mut child = Command::new(env!("CARGO_BIN_EXE_streetman"))
         .args([
@@ -403,6 +418,8 @@ fn cli_accuracy_fixtures_include_token_greedy() {
     assert!(stdout.contains("final-case-pass"));
     assert!(stdout.contains("\"all_lanes\""));
     assert!(stdout.contains("all-lanes-pass"));
+    assert!(stdout.contains("\"absolute_win_v2\""));
+    assert!(stdout.contains("absolute-win-2-pass"));
 }
 
 #[test]

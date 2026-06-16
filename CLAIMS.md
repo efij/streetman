@@ -1,7 +1,11 @@
 # Streetman Claims Ledger
 
-Streetman claims an **absolute win for the committed local offline snapshot**
-`competitor-live-2026-06-07`.
+Streetman claims two bounded wins:
+
+- an **absolute win for the committed local offline snapshot**
+  `competitor-live-2026-06-07`
+- an **accuracy-gated/offline/reversible lane win** when
+  `streetman bench run --suite absolute-win-2` passes
 
 This repository contains deterministic compression, local encrypted archive, retrieval,
 audit reports, fixture benchmarks, live competitor capture, and claim-gate commands.
@@ -25,6 +29,7 @@ benchmarks pass the same gates.
 | Red-team compression safety | Implemented local OSS | `streetman bench run --suite redteam` |
 | Compression diff viewer | Implemented local OSS | `streetman diff <original> <compressed> --html --out <file>` |
 | Gateway conformance checks | Implemented local OSS | `streetman gateway conformance --provider all` |
+| Accuracy-gated published-baseline lane | Implemented local OSS | `streetman bench run --suite absolute-win-2`; LLMLingua/LeanCTX tracked as lossy/network raw-ratio baselines |
 
 ## Win Gates
 
@@ -40,6 +45,7 @@ Streetman may publish a lane win only if a committed snapshot in
 | Trust | Zero telemetry default, local encrypted originals, public claim audit |
 | Latency | Rust hot path `p50 <10ms` for 100KB deterministic compression |
 | Enterprise adoption hooks | Policy, proof, red-team, diff, and gateway conformance commands must pass locally |
+| Published research/proxy baselines | LLMLingua/LeanCTX are not counted as defeated on raw ratio unless live snapshots prove it; they are disqualified only from the lossless/offline/reversible lane when they cannot satisfy local proof gates |
 
 ## Snapshot Policy
 

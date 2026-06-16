@@ -7,7 +7,7 @@ cargo install --git https://github.com/efij/streetman streetman-cli --bin street
 ```
 
 The Git install path tracks the latest pushed source release. Current source
-release: `1.0.1`.
+release: `2.0.0`.
 
 Build and run locally:
 
@@ -24,6 +24,7 @@ cargo run --bin streetman -- bench run --suite absolute-win
 cargo run --bin streetman -- bench run --suite token-greedy
 cargo run --bin streetman -- bench run --suite final-case
 cargo run --bin streetman -- bench run --suite all-lanes
+cargo run --bin streetman -- bench run --suite absolute-win-2
 ```
 
 Use the code-transport and security surfaces:

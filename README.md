@@ -14,7 +14,7 @@
 [![Platforms](https://img.shields.io/badge/Platforms-4_native-purple)](#-install)
 [![GitHub stars](https://img.shields.io/github/stars/yourorg/streetman?style=social)](https://github.com/yourorg/streetman)
 
-**[ Install ](#-install) · [ Benchmarks ](#-benchmarks) · [ Docs ](./docs/quickstart.md) · [ Feature Matrix ](./FEATURE_MATRIX.md) · [ Claims ](./CLAIMS.md)**
+**[ Install ](#-install) · [ Benchmarks ](#-benchmarks) · [ Docs ](./docs/quickstart.md) · [ Feature Matrix ](./FEATURE_MATRIX.md) · [ Absolute Win ](./STREETMAN_ABSOLUTE_WIN.md) · [ Claims ](./CLAIMS.md)**
 
 </div>
 
@@ -22,15 +22,16 @@
 
 ## current status
 
-Streetman now has a working Rust implementation plus a committed offline competitor
-snapshot that passes the local absolute-win gate:
+Streetman now has a working Rust implementation plus committed offline gates for
+two claim layers: the legacy local competitor snapshot and the v2 accuracy-gated
+absolute-win lane.
 
 - `streetman compress` — deterministic compression for prose, JSON, logs, search, diffs, code, docs, HTML.
 - `streetman compile` — ShortLang input/context compiler for prompts, logs, RAG chunks, history, and agent state.
 - `streetman run` / `streetman wrap` — agent command wrapper that writes replayable run receipts.
 - `streetman retrieve` — encrypted local archive retrieval for exact originals.
 - `streetman audit` — local quality/waste reports and dashboard HTML.
-- `streetman bench` — fixture benches, live competitor capture, and gated compare output.
+- `streetman bench` — fixture benches, live competitor capture, published-baseline gates, and gated compare output.
 - `streetman proxy` — local OpenAI-compatible transform proxy; forwards when `STREETMAN_UPSTREAM_URL` is set.
 - `streetman mcp serve` — stdio JSON MCP-style server for compress/compile/retrieve/stats.
 - `streetman memory` / `streetman learn` — shared ShortLang memory and failed-run learning notes.
@@ -45,6 +46,20 @@ snapshot that passes the local absolute-win gate:
 - `streetman gateway conformance` — local LiteLLM/OpenRouter/Portkey adapter contract checks.
 - `streetman lean` — implementation-minimalism layer: instructions, review, audit, gate, proof certificates, and Ponytail H2H fixtures.
 - Token-greedy compression — actual `tiktoken` counts drive transforms; final output is never worse than raw.
+
+Current source release: `2.0.0`.
+
+Primary v2 gate:
+
+```bash
+streetman bench run --suite absolute-win-2
+```
+
+That suite verifies 17 local dimensions under one explicit definition:
+lossless, accuracy-100, reversible/proof-carrying, deterministic, and offline.
+Published lossy/network baselines such as LLMLingua and LeanCTX remain raw-ratio
+competitors, but they do not qualify for this lane unless they satisfy the same
+local proof requirements.
 
 Current committed snapshot: `competitor-live-2026-06-07`.
 
@@ -127,7 +142,7 @@ Nobody else in the category offers independent verification infra.
 cargo install --git https://github.com/efij/streetman streetman-cli --bin streetman --locked
 ```
 
-This installs the latest pushed source version. Current source release: `1.0.1`.
+This installs the latest pushed source version. Current source release: `2.0.0`.
 
 Run the fixture gate after install:
 
@@ -135,6 +150,7 @@ Run the fixture gate after install:
 streetman bench run --suite absolute-win
 streetman bench run --suite token-greedy
 streetman bench run --suite all-lanes
+streetman bench run --suite absolute-win-2
 ```
 
 ### Local development
@@ -142,6 +158,7 @@ streetman bench run --suite all-lanes
 git clone https://github.com/efij/streetman
 cd streetman
 cargo run --bin streetman -- bench run --suite absolute-win
+cargo run --bin streetman -- bench run --suite absolute-win-2
 ```
 
 ### Package managers and editor plugins

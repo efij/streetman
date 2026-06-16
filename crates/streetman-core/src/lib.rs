@@ -14,8 +14,8 @@ pub use accuracy::{accuracy_check, AccuracyReport};
 pub use archive::{Archive, ArchiveRecord};
 pub use audit::{AuditReport, QualityScore};
 pub use bench::{
-    run_all_lanes_bench, run_final_kf_bench, run_fixture_bench, run_redteam_bench,
-    run_token_greedy_bench, AbsoluteWinGate, BenchResult,
+    run_absolute_win_v2_bench, run_all_lanes_bench, run_final_kf_bench, run_fixture_bench,
+    run_redteam_bench, run_token_greedy_bench, AbsoluteWinGate, BenchResult,
 };
 pub use compress::{
     compress, decode_archive_free, fit_to_token_budget, token_estimate, token_estimate_for_model,

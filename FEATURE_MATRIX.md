@@ -30,6 +30,7 @@ This matrix tracks the requested Headroom + Token Optimizer parity work.
 | Token-greedy safety | N/A | Prose-shortening can inflate real tokens | `streetman bench run --suite token-greedy` proves actual-token candidate selection and never-worse-than-raw guard |
 | Final Case gate | N/A | N/A | `streetman bench run --suite final-case` verifies implemented final-design pieces; roadmap claims remain excluded |
 | All-lanes gate | N/A | N/A | `streetman bench run --suite all-lanes` verifies token correctness, prose stacking, logs/JSON, code, reversibility/context, performance smoke, and enterprise-local controls |
+| Published-baseline gate | LLMLingua raw ratio is lossy/model-based | LeanCTX is network-oriented/lossy | `streetman bench run --suite absolute-win-2` verifies the lossless/offline/reversible lane and tracks both as raw-ratio baselines, not local measured defeats |
 
 ## OSS vs Enterprise Segregation
 
@@ -50,5 +51,6 @@ Current committed evidence: `benchmarks/results/competitor-live.json`,
 `benchmarks/results/competitor-compare.json`,
 `benchmarks/results/token-greedy-case1-case2.json`, and
 `benchmarks/results/final-case-0.3.json`, and
-`benchmarks/results/all-lanes-1.0.json`. Broader hosted/provider claims still
-require additional snapshots.
+`benchmarks/results/all-lanes-1.0.json`, and
+`benchmarks/results/absolute-win-2.0.json`. Broader hosted/provider raw-ratio
+claims still require additional snapshots.
