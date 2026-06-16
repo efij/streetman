@@ -177,6 +177,69 @@ fn cli_token_greedy_bench_smoke() {
 }
 
 #[test]
+fn cli_final_kf_bench_smoke() {
+    let output = Command::new(env!("CARGO_BIN_EXE_streetman"))
+        .args(["bench", "run", "--suite", "final-case"])
+        .stdout(Stdio::piped())
+        .output()
+        .expect("run final case bench");
+    assert!(output.status.success());
+    let stdout = String::from_utf8(output.stdout).expect("utf8");
+    assert!(stdout.contains("final-case-0.3"));
+    assert!(stdout.contains("case-c8-anchored-diff-only-emission"));
+    assert!(stdout.contains("\"gates_passed\": true"));
+}
+
+#[test]
+fn cli_code_transport_and_security_smoke() {
+    let dir = std::env::temp_dir().join(format!("streetman-cli-code-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).expect("mkdir");
+    let before = dir.join("before.rs");
+    let after = dir.join("after.rs");
+    let before_text = (0..80)
+        .map(|i| format!("fn item_{i}() {{ println!(\"unchanged {i}\"); }}"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    let after_text = before_text.replace("unchanged 40", "changed 40");
+    std::fs::write(&before, &before_text).expect("write before");
+    std::fs::write(&after, &after_text).expect("write after");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_streetman"))
+        .args(["code", "diff", "--before"])
+        .arg(&before)
+        .arg("--after")
+        .arg(&after)
+        .arg("--json")
+        .stdout(Stdio::piped())
+        .output()
+        .expect("run code diff");
+    assert!(output.status.success());
+    let stdout = String::from_utf8(output.stdout).expect("utf8");
+    assert!(stdout.contains("streetman-anchored-edit-v1"));
+
+    let output = Command::new(env!("CARGO_BIN_EXE_streetman"))
+        .args(["code", "elide"])
+        .arg(&after)
+        .arg("--json")
+        .stdout(Stdio::piped())
+        .output()
+        .expect("run code elide");
+    assert!(output.status.success());
+    let stdout = String::from_utf8(output.stdout).expect("utf8");
+    assert!(stdout.contains("streetman-unchanged-elision-v1"));
+
+    let output = Command::new(env!("CARGO_BIN_EXE_streetman"))
+        .args(["security", "attest", "--json"])
+        .stdout(Stdio::piped())
+        .output()
+        .expect("run security attest");
+    assert!(output.status.success());
+    let stdout = String::from_utf8(output.stdout).expect("utf8");
+    assert!(stdout.contains("offline-deterministic-zero-telemetry"));
+    assert!(stdout.contains("Case-CLAUDE-TOKENIZER"));
+}
+
+#[test]
 fn cli_accuracy_fixtures_include_token_greedy() {
     let output = Command::new(env!("CARGO_BIN_EXE_streetman"))
         .args(["bench", "accuracy-fixtures"])
@@ -187,6 +250,8 @@ fn cli_accuracy_fixtures_include_token_greedy() {
     let stdout = String::from_utf8(output.stdout).expect("utf8");
     assert!(stdout.contains("\"token_greedy\""));
     assert!(stdout.contains("token-greedy-pass"));
+    assert!(stdout.contains("\"final_kf\""));
+    assert!(stdout.contains("final-case-pass"));
 }
 
 #[test]

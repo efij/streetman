@@ -39,6 +39,9 @@ snapshot that passes the local absolute-win gate:
 - `streetman policy` — local policy-as-code checks for allowed modes/domains, zero telemetry, certificates, gateway targets.
 - `streetman proof` — deterministic proof-certificate verification for compressed outputs.
 - `streetman diff` — local text/HTML compression diff reports with protected-token accuracy.
+- `streetman code diff` — anchored edit-only transport for small code changes instead of full-file reprints.
+- `streetman code elide` — reversible unchanged-region elision for long code payloads.
+- `streetman security attest` — offline zero-telemetry/encrypted-archive/proof-carrying security attestation.
 - `streetman gateway conformance` — local LiteLLM/OpenRouter/Portkey adapter contract checks.
 - `streetman lean` — implementation-minimalism layer: instructions, review, audit, gate, proof certificates, and Ponytail H2H fixtures.
 - Token-greedy compression — actual `tiktoken` counts drive transforms; final output is never worse than raw.
@@ -124,7 +127,7 @@ Nobody else in the category offers independent verification infra.
 cargo install --git https://github.com/efij/streetman streetman-cli --bin streetman --locked
 ```
 
-This installs the latest pushed source version. Current source release: `0.2.0`.
+This installs the latest pushed source version. Current source release: `0.3.0`.
 
 Run the fixture gate after install:
 
@@ -179,11 +182,21 @@ streetman bench run --suite redteam
 # Prove token-greedy / never-worse behavior
 streetman bench run --suite token-greedy
 
+# Prove the implemented final-killer-feature gates
+streetman bench run --suite final-case
+
 # Check local policy-as-code
 streetman policy check --mode ultra --domain prose README.md
 
 # Build a local HTML compression diff
 streetman diff original.txt compressed.txt --html --out benchmarks/results/compression-diff.html
+
+# Emit code-token transport instead of full-file reprints
+streetman code diff --before old.rs --after new.rs --json
+streetman code elide src/lib.rs --keep 3 --json
+
+# Print offline privacy/security attestation
+streetman security attest --json
 
 # Check gateway adapter contracts
 streetman gateway conformance --provider all

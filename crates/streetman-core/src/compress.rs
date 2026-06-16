@@ -1,6 +1,6 @@
 use crate::accuracy::{accuracy_check, protected_tokens, AccuracyReport};
 use serde::{Deserialize, Serialize};
-use std::sync::OnceLock;
+use std::{collections::HashMap, sync::OnceLock};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
@@ -146,9 +146,8 @@ pub fn compress(input: &str, mode: CompressionMode, domain: ContentDomain) -> Co
         ContentDomain::Logs | ContentDomain::Shell => compress_logs(input),
         ContentDomain::Search => compress_search(input),
         ContentDomain::Diff => protect_artifact(input, "diff"),
-        ContentDomain::Code | ContentDomain::Sql | ContentDomain::K8s => {
-            protect_artifact(input, "code-artifact")
-        }
+        ContentDomain::Code => compress_code_comments(input, resolved_mode),
+        ContentDomain::Sql | ContentDomain::K8s => protect_artifact(input, "code-artifact"),
         ContentDomain::CodeMap => compress_code_map(input),
         ContentDomain::Html => compress_html(input),
         ContentDomain::Context | ContentDomain::Rag | ContentDomain::History => {
@@ -818,7 +817,54 @@ fn compress_json(input: &str) -> String {
     let Ok(value) = serde_json::from_str::<serde_json::Value>(input) else {
         return compress_prose(input, CompressionMode::Full);
     };
-    summarize_json_value(&value, 0)
+    let summary = summarize_json_value(&value, 0);
+    if let Some(factored) = json_schema_rows(&value) {
+        if token_estimate(&factored) < token_estimate(&summary) {
+            return factored;
+        }
+    }
+    summary
+}
+
+fn json_schema_rows(value: &serde_json::Value) -> Option<String> {
+    let items = value.as_array()?;
+    if items.len() < 3 {
+        return None;
+    }
+    let first = items.first()?.as_object()?;
+    let mut keys = first.keys().cloned().collect::<Vec<_>>();
+    keys.sort();
+    if keys.is_empty() {
+        return None;
+    }
+
+    let mut rows = Vec::with_capacity(items.len());
+    for item in items {
+        let object = item.as_object()?;
+        let mut item_keys = object.keys().cloned().collect::<Vec<_>>();
+        item_keys.sort();
+        if item_keys != keys {
+            return None;
+        }
+        rows.push(
+            keys.iter()
+                .map(|key| object.get(key).cloned().unwrap_or(serde_json::Value::Null))
+                .collect::<Vec<_>>(),
+        );
+    }
+
+    let factored = serde_json::json!({
+        "streetman": "json-schema-rows-v1",
+        "n": items.len(),
+        "k": keys,
+        "r": rows
+    })
+    .to_string();
+    if token_estimate(&factored) < token_estimate(&value.to_string()) {
+        Some(factored)
+    } else {
+        None
+    }
 }
 
 fn summarize_json_value(value: &serde_json::Value, depth: usize) -> String {
@@ -861,6 +907,9 @@ fn is_json_anomaly(value: &serde_json::Value) -> bool {
 }
 
 fn compress_logs(input: &str) -> String {
+    if let Some(templated) = templatize_logs(input) {
+        return templated;
+    }
     let mut interesting = Vec::new();
     let mut omitted = 0usize;
     for line in input.lines() {
@@ -883,6 +932,86 @@ fn compress_logs(input: &str) -> String {
             interesting.join("\n")
         )
     }
+}
+
+fn templatize_logs(input: &str) -> Option<String> {
+    let lines = input
+        .lines()
+        .filter(|line| !line.trim().is_empty())
+        .collect::<Vec<_>>();
+    if lines.len() < 8 {
+        return None;
+    }
+
+    let mut groups: HashMap<String, (usize, String)> = HashMap::new();
+    let mut interesting = Vec::new();
+    for line in &lines {
+        let lower = line.to_ascii_lowercase();
+        if ["error", "fatal", "warn", "failed", "traceback", "exception"]
+            .iter()
+            .any(|pat| lower.contains(pat))
+        {
+            interesting.push(line.trim().to_string());
+        }
+        let template = log_template(line);
+        let entry = groups
+            .entry(template)
+            .or_insert_with(|| (0, line.trim().to_string()));
+        entry.0 += 1;
+    }
+
+    let mut repeated = groups
+        .into_iter()
+        .filter(|(_, (count, _))| *count >= 3)
+        .collect::<Vec<_>>();
+    repeated.sort_by(|a, b| b.1 .0.cmp(&a.1 .0).then_with(|| a.0.cmp(&b.0)));
+    if repeated.is_empty() {
+        return None;
+    }
+
+    let total_repeated = repeated.iter().map(|(_, (count, _))| *count).sum::<usize>();
+    let mut out = vec![format!(
+        "[streetman log-template-v1: {} lines, {} repeated]",
+        lines.len(),
+        total_repeated
+    )];
+    for (idx, (template, (count, sample))) in repeated.into_iter().take(12).enumerate() {
+        out.push(format!("t{} x{}: {}", idx + 1, count, template));
+        out.push(format!("  sample: {sample}"));
+    }
+    interesting.sort();
+    interesting.dedup();
+    if !interesting.is_empty() {
+        out.push("[signal]".to_string());
+        out.extend(interesting);
+    }
+    let candidate = out.join("\n");
+    if token_estimate(&candidate) < token_estimate(input) {
+        Some(candidate)
+    } else {
+        None
+    }
+}
+
+fn log_template(line: &str) -> String {
+    let mut out = line.to_string();
+    let rules = [
+        (
+            r"\b\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z\b",
+            "{ts}",
+        ),
+        (r"\b[0-9a-fA-F]{8,}\b", "{hex}"),
+        (
+            r"\b(req|request|trace|span|user|job|worker)[_-]?[A-Za-z0-9-]+\b",
+            "{$1}",
+        ),
+        (r"\b\d+\b", "{n}"),
+    ];
+    for (pattern, replacement) in rules {
+        let re = regex::Regex::new(pattern).expect("log template regex");
+        out = re.replace_all(&out, replacement).to_string();
+    }
+    out
 }
 
 fn compress_search(input: &str) -> String {
@@ -986,6 +1115,7 @@ fn compression_accuracy_check(
             accuracy_check(&filter_representative_context_lines(original), candidate)
         }
         ContentDomain::CodeMap => accuracy_check(&filter_code_structure_lines(original), candidate),
+        ContentDomain::Code => accuracy_check(&filter_code_logic_lines(original), candidate),
         ContentDomain::Prose | ContentDomain::Docs => {
             accuracy_from_tokens(prose_protected_tokens(original), candidate)
         }
@@ -1081,6 +1211,98 @@ fn protect_artifact(input: &str, artifact: &str) -> String {
     )
 }
 
+fn compress_code_comments(input: &str, mode: CompressionMode) -> String {
+    let mut out = Vec::new();
+    let mut in_block_comment = false;
+    for line in input.lines() {
+        let trimmed = line.trim_start();
+        let indent_len = line.len().saturating_sub(trimmed.len());
+        let indent = &line[..indent_len];
+
+        if in_block_comment {
+            let compressed = compress_comment_payload(trimmed, mode);
+            out.push(format!("{indent}{compressed}"));
+            if trimmed.contains("*/") || trimmed.contains("\"\"\"") || trimmed.contains("'''") {
+                in_block_comment = false;
+            }
+            continue;
+        }
+
+        if trimmed.starts_with("//!") || trimmed.starts_with("///") || trimmed.starts_with("//") {
+            let marker = if trimmed.starts_with("//!") {
+                "//!"
+            } else if trimmed.starts_with("///") {
+                "///"
+            } else {
+                "//"
+            };
+            let body = trimmed.trim_start_matches(marker).trim_start();
+            out.push(format!(
+                "{indent}{marker} {}",
+                compress_comment_text(body, mode)
+            ));
+        } else if trimmed.starts_with('#') {
+            let body = trimmed.trim_start_matches('#').trim_start();
+            out.push(format!("{indent}# {}", compress_comment_text(body, mode)));
+        } else if trimmed.starts_with("/*") || trimmed.starts_with('*') {
+            in_block_comment = !trimmed.contains("*/");
+            out.push(format!(
+                "{indent}{}",
+                compress_comment_payload(trimmed, mode)
+            ));
+        } else if trimmed.starts_with("\"\"\"") || trimmed.starts_with("'''") {
+            in_block_comment = !(trimmed[3..].contains("\"\"\"") || trimmed[3..].contains("'''"));
+            out.push(format!(
+                "{indent}{}",
+                compress_comment_payload(trimmed, mode)
+            ));
+        } else if let Some(idx) = line.find("//") {
+            let (code, comment) = line.split_at(idx);
+            let body = comment.trim_start_matches("//").trim_start();
+            out.push(format!("{code}// {}", compress_comment_text(body, mode)));
+        } else {
+            out.push(line.to_string());
+        }
+    }
+    out.join("\n")
+}
+
+fn compress_comment_payload(comment: &str, mode: CompressionMode) -> String {
+    let delimiters = ["/*", "*/", "*", "\"\"\"", "'''"];
+    let mut prefix = "";
+    let mut suffix = "";
+    let mut body = comment.trim();
+    for delimiter in delimiters {
+        if body.starts_with(delimiter) {
+            prefix = delimiter;
+            body = body.trim_start_matches(delimiter).trim_start();
+        }
+        if body.ends_with(delimiter) {
+            suffix = delimiter;
+            body = body.trim_end_matches(delimiter).trim_end();
+        }
+    }
+    let compressed = compress_comment_text(body, mode);
+    match (prefix.is_empty(), suffix.is_empty()) {
+        (true, true) => compressed,
+        (false, true) => format!("{prefix} {compressed}"),
+        (true, false) => format!("{compressed} {suffix}"),
+        (false, false) => format!("{prefix} {compressed} {suffix}"),
+    }
+}
+
+fn compress_comment_text(body: &str, mode: CompressionMode) -> String {
+    if body.trim().is_empty() {
+        return String::new();
+    }
+    let compressed = compress_prose_fragment(body, mode);
+    if token_estimate(&compressed) < token_estimate(body) {
+        compressed
+    } else {
+        body.to_string()
+    }
+}
+
 fn compress_code_map(input: &str) -> String {
     let mut out = Vec::new();
     let mut omitted = 0usize;
@@ -1167,6 +1389,23 @@ fn filter_code_structure_lines(input: &str) -> String {
         .join("\n")
 }
 
+fn filter_code_logic_lines(input: &str) -> String {
+    input
+        .lines()
+        .filter(|line| {
+            let trimmed = line.trim_start();
+            !(trimmed.starts_with("//")
+                || trimmed.starts_with('#')
+                || trimmed.starts_with("/*")
+                || trimmed.starts_with('*')
+                || trimmed.starts_with("\"\"\"")
+                || trimmed.starts_with("'''"))
+        })
+        .map(|line| line.split("//").next().unwrap_or(line).trim_end())
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
 fn compress_html(input: &str) -> String {
     let tag_re = regex::Regex::new(r"(?is)<(script|style).*?</\1>").expect("html regex");
     let no_scripts = tag_re.replace_all(input, "");
@@ -1241,5 +1480,47 @@ mod tests {
             .token_guard
             .starts_with("never-worse-than-raw/"));
         assert!(result.certificate.token_guard.ends_with("-greedy"));
+    }
+
+    #[test]
+    fn code_domain_compresses_comments_without_touching_logic() {
+        let input = r#"fn add(a: i32, b: i32) -> i32 {
+    // The reason this function exists is that callers need a stable addition helper before deployment.
+    a + b
+}"#;
+        let result = compress(input, CompressionMode::Full, ContentDomain::Code);
+        assert_eq!(result.certificate.accuracy_score, 100);
+        assert!(result.compressed.contains("a + b"));
+        assert!(result.compressed_tokens_estimate <= result.original_tokens_estimate);
+        assert!(!result.compressed.contains("artifact firewall"));
+    }
+
+    #[test]
+    fn json_schema_rows_remove_repeated_keys() {
+        let input = serde_json::json!((0..6)
+            .map(|i| serde_json::json!({
+                "authentication_middleware_request_identifier": i,
+                "observability_correlation_trace_identifier": format!("trace-{i}"),
+                "internationalization_locale_configuration": "en-US",
+                "background_worker_heartbeat_message": "finished successfully"
+            }))
+            .collect::<Vec<_>>())
+        .to_string();
+        let result = compress(&input, CompressionMode::Full, ContentDomain::Json);
+        assert!(result.compressed.contains("json-schema-rows-v1"));
+        assert!(result.compressed_tokens_estimate < result.original_tokens_estimate);
+    }
+
+    #[test]
+    fn logs_are_templatized_when_structure_repeats() {
+        let input = (0..20)
+            .map(|i| {
+                format!("2026-06-16T10:00:00Z INFO worker heartbeat request_id=req-{i} status=ok")
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+        let result = compress(&input, CompressionMode::Full, ContentDomain::Logs);
+        assert!(result.compressed.contains("log-template-v1"));
+        assert!(result.compressed_tokens_estimate < result.original_tokens_estimate);
     }
 }

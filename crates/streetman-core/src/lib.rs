@@ -6,13 +6,16 @@ pub mod compress;
 pub mod config;
 pub mod lean;
 pub mod run;
+pub mod security;
 pub mod shortlang;
+pub mod transport;
 
 pub use accuracy::{accuracy_check, AccuracyReport};
 pub use archive::{Archive, ArchiveRecord};
 pub use audit::{AuditReport, QualityScore};
 pub use bench::{
-    run_fixture_bench, run_redteam_bench, run_token_greedy_bench, AbsoluteWinGate, BenchResult,
+    run_final_kf_bench, run_fixture_bench, run_redteam_bench, run_token_greedy_bench,
+    AbsoluteWinGate, BenchResult,
 };
 pub use compress::{
     compress, token_estimate, token_estimate_for_model, verify_certificate, CompressionCertificate,
@@ -26,6 +29,8 @@ pub use lean::{
     LeanReport,
 };
 pub use run::{build_run_receipt, RunArtifactReport, RunReceipt};
+pub use security::{security_attestation, SecurityAttestation, SecurityClaim};
 pub use shortlang::{
     align_cache_prefix, compile_shortlang, route_content, ContentRoute, ShortLangResult,
 };
+pub use transport::{anchored_diff, elide_unchanged_regions, AnchoredDiffReport, ElisionReport};

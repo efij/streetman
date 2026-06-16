@@ -1,6 +1,8 @@
 use crate::{
     audit::audit_text,
     compress::{compress, token_estimate, CompressionMode, ContentDomain},
+    security::security_attestation,
+    transport::{anchored_diff, elide_unchanged_regions},
 };
 use serde::{Deserialize, Serialize};
 use std::{collections::HashSet, fs, path::Path};
@@ -382,6 +384,136 @@ pub fn run_token_greedy_bench() -> BenchResult {
         cases,
         gates_passed,
         claim: "Case-1/Case-2 pass means actual tiktoken counts drive transforms and compressed output is never worse than raw on committed trap fixtures.".to_string(),
+    }
+}
+
+pub fn run_final_kf_bench() -> BenchResult {
+    let mut cases = Vec::new();
+
+    let code = r#"fn add(a: i32, b: i32) -> i32 {
+    // The reason this function exists is that callers need a stable addition helper before deployment.
+    a + b
+}"#;
+    let code_result = compress(code, CompressionMode::Full, ContentDomain::Code);
+    cases.push(BenchCaseResult {
+        name: "case-c7-code-comment-compression".to_string(),
+        lane: "code".to_string(),
+        before_tokens: code_result.original_tokens_estimate,
+        after_tokens: code_result.compressed_tokens_estimate,
+        savings_percent: code_result.savings_percent,
+        accuracy_score: code_result.certificate.accuracy_score,
+        passed: code_result.certificate.accuracy_score == 100
+            && code_result.compressed_tokens_estimate <= code_result.original_tokens_estimate
+            && code_result.compressed.contains("a + b")
+            && !code_result.compressed.contains("artifact firewall"),
+    });
+
+    let before = (0..120)
+        .map(|i| format!("line {i}: unchanged transport payload"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    let after = before.replace(
+        "line 73: unchanged transport payload",
+        "line 73: changed transport payload",
+    );
+    let diff = anchored_diff(&before, &after);
+    cases.push(BenchCaseResult {
+        name: "case-c8-anchored-diff-only-emission".to_string(),
+        lane: "code-transport".to_string(),
+        before_tokens: diff.after_tokens,
+        after_tokens: diff.transport_tokens,
+        savings_percent: diff.savings_vs_full_after_percent,
+        accuracy_score: 100,
+        passed: diff.fallback_reason.is_none() && diff.savings_vs_full_after_percent > 90.0,
+    });
+
+    let elision = elide_unchanged_regions(&after, 3);
+    cases.push(BenchCaseResult {
+        name: "case-c9-unchanged-region-elision".to_string(),
+        lane: "code-transport".to_string(),
+        before_tokens: elision.original_tokens,
+        after_tokens: elision.elided_tokens,
+        savings_percent: elision.savings_percent,
+        accuracy_score: 100,
+        passed: elision.omitted_lines > 100 && elision.elided_tokens < elision.original_tokens,
+    });
+
+    let json = serde_json::json!((0..6)
+        .map(|i| serde_json::json!({
+            "authentication_middleware_request_identifier": i,
+            "observability_correlation_trace_identifier": format!("trace-{i}"),
+            "internationalization_locale_configuration": "en-US",
+            "background_worker_heartbeat_message": "finished successfully"
+        }))
+        .collect::<Vec<_>>())
+    .to_string();
+    let json_result = compress(&json, CompressionMode::Full, ContentDomain::Json);
+    cases.push(BenchCaseResult {
+        name: "case-3b-json-schema-factoring".to_string(),
+        lane: "json".to_string(),
+        before_tokens: json_result.original_tokens_estimate,
+        after_tokens: json_result.compressed_tokens_estimate,
+        savings_percent: json_result.savings_percent,
+        accuracy_score: json_result.certificate.accuracy_score,
+        passed: json_result.compressed.contains("json-schema-rows-v1")
+            && json_result.compressed_tokens_estimate < json_result.original_tokens_estimate,
+    });
+
+    let logs = (0..40)
+        .map(|i| format!("2026-06-16T10:00:00Z INFO worker heartbeat request_id=req-{i} status=ok"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    let log_result = compress(&logs, CompressionMode::Full, ContentDomain::Logs);
+    cases.push(BenchCaseResult {
+        name: "case-3a-log-line-templatization".to_string(),
+        lane: "logs".to_string(),
+        before_tokens: log_result.original_tokens_estimate,
+        after_tokens: log_result.compressed_tokens_estimate,
+        savings_percent: log_result.savings_percent,
+        accuracy_score: log_result.certificate.accuracy_score,
+        passed: log_result.compressed.contains("log-template-v1")
+            && log_result.compressed_tokens_estimate < log_result.original_tokens_estimate,
+    });
+
+    let security = security_attestation();
+    cases.push(BenchCaseResult {
+        name: "case-s1-s2-s3-s5-security-attestation".to_string(),
+        lane: "security".to_string(),
+        before_tokens: token_estimate("streetman security claims"),
+        after_tokens: token_estimate(&security.signed_summary),
+        savings_percent: 0.0,
+        accuracy_score: 100,
+        passed: security
+            .claims
+            .iter()
+            .any(|claim| claim.id == "Case-S1" && claim.status == "pass")
+            && security
+                .claims
+                .iter()
+                .any(|claim| claim.id == "Case-S2" && claim.status == "pass")
+            && security
+                .claims
+                .iter()
+                .any(|claim| claim.id == "Case-S3" && claim.status == "pass")
+            && security
+                .claims
+                .iter()
+                .any(|claim| claim.id == "Case-S5" && claim.status == "pass")
+            && security.signed_summary.len() == 64,
+    });
+
+    let gates_passed = cases.iter().all(|case| case.passed);
+    BenchResult {
+        suite: "final-case-0.3".to_string(),
+        status: if gates_passed {
+            "final-case-pass"
+        } else {
+            "final-case-fail"
+        }
+        .to_string(),
+        cases,
+        gates_passed,
+        claim: "0.3 implements verifiable pieces of the final design: code comment compression, anchored edit transport, unchanged-region elision, log templates, JSON schema rows, and offline security attestation. Learned rewriting, Claude-optimal tokenization, seccomp, and SBOM signing remain roadmap-gated.".to_string(),
     }
 }
 

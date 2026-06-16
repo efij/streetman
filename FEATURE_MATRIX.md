@@ -5,8 +5,8 @@ This matrix tracks the requested Headroom + Token Optimizer parity work.
 | Capability | Headroom Bar | Token Optimizer Bar | Streetman Status |
 |---|---|---|---|
 | Output-prose compression | Limited direct focus | Detects output waste | Scaffolded in Rust core |
-| JSON/tool-output compression | SmartCrusher + CCR | Runtime compression events | Scaffolded with anomaly-preserving JSON summary |
-| Logs/search/diffs/code | ContentRouter compressors | Bash/read handlers | Snapshot-winning deterministic handlers for logs/search/pytest |
+| JSON/tool-output compression | SmartCrusher + CCR | Runtime compression events | Anomaly-preserving summary plus token-gated JSON schema-row factoring |
+| Logs/search/diffs/code | ContentRouter compressors | Bash/read handlers | Snapshot-winning deterministic handlers, log templatization, code comment compression, anchored edit transport |
 | Reversible originals | CCR retrieve tool | Tool archive/expand | Scaffolded encrypted archive + retrieve |
 | Proxy | OpenAI/Anthropic/Gemini proxy | N/A | Local `/health`, `/stats`, `/v1/compress`, chat/responses transform, and `STREETMAN_UPSTREAM_URL` forwarding |
 | MCP tools | `headroom_compress/retrieve/stats` | N/A | `streetman mcp serve` exposes compress/compile/retrieve/stats over stdio JSON |
@@ -20,12 +20,15 @@ This matrix tracks the requested Headroom + Token Optimizer parity work.
 | Proof certificates | Retrieve/citation metadata | Audit trails | OSS deterministic compression certificates + `streetman proof verify` |
 | Red-team compression suite | Safety by compressor rules | Safety by config/audit | OSS `streetman bench run --suite redteam` implemented |
 | Compression diff viewer | N/A | Dashboard issue views | OSS text/HTML diff via `streetman diff` |
+| Code transport | N/A | N/A | `streetman code diff` emits anchored edit-only payloads; `streetman code elide` omits unchanged regions reversibly |
+| Security attestation | N/A | Config audit | `streetman security attest` records zero telemetry, encrypted archive, proof-carrying output, and Claude-tokenizer honesty cap |
 | Gateway conformance | Proxy compatibility | Codex/session support | OSS LiteLLM/OpenRouter/Portkey contract checks via `streetman gateway conformance` |
 | Agent wrapping | `headroom wrap` for coding agents | Codex/session support | `streetman run` and `streetman wrap` emit replayable run receipts |
 | Cache alignment | CacheAligner | N/A | `streetman cache-align` stabilizes policy/memory/retrieval/payload prefixes |
 | H2H proof | Public proof/evals | N/A | `streetman duel --against headroom` creates trace comparison JSON/HTML |
 | Implementation minimalism | N/A | Ponytail-style YAGNI / stdlib / native rules | `streetman lean` ships instructions, review, audit, gate, Lean Certificates, adapter assets, and Ponytail H2H fixtures |
 | Token-greedy safety | N/A | Prose-shortening can inflate real tokens | `streetman bench run --suite token-greedy` proves actual-token candidate selection and never-worse-than-raw guard |
+| Final Case gate | N/A | N/A | `streetman bench run --suite final-case` verifies implemented final-design pieces; roadmap claims remain excluded |
 
 ## OSS vs Enterprise Segregation
 
@@ -42,6 +45,8 @@ This matrix tracks the requested Headroom + Token Optimizer parity work.
 Streetman should not claim parity for any row marked scaffolded or planned. Parity
 requires end-to-end tests plus a committed benchmark or fixture proving the behavior.
 
-Current committed evidence: `benchmarks/results/competitor-live.json` and
-`benchmarks/results/competitor-compare.json` show a local offline absolute-win
-snapshot. Broader hosted/provider claims still require additional snapshots.
+Current committed evidence: `benchmarks/results/competitor-live.json`,
+`benchmarks/results/competitor-compare.json`,
+`benchmarks/results/token-greedy-case1-case2.json`, and
+`benchmarks/results/final-case-0.3.json`. Broader hosted/provider claims still
+require additional snapshots.

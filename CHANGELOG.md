@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.3.0 - 2026-06-16
+
+- Added `streetman bench run --suite final-case`, a real-token verification gate
+  for the implemented final-design pieces.
+- Added Case-C8 anchored edit-only code transport with token accounting.
+- Added Case-C9 unchanged-region elision for long code payloads.
+- Added Case-C7 code comment/docstring compression: logic lines remain intact,
+  comments are token-greedy compressed, and never-worse still gates output.
+- Added Case-3a log-line templatization and Case-3b JSON schema-row factoring,
+  both chosen only when real tokenizer counts beat the prior candidate.
+- Added `streetman code diff`, `streetman code elide`, and
+  `streetman security attest`.
+- Added an offline security attestation for Case-S1/Case-S2/Case-S3/Case-S5 with an
+  honest Claude tokenizer cap. Learned rewriting, Claude-optimal offline
+  counts, seccomp enforcement, SBOM signing, SIMD, and daemon warm mode remain
+  roadmap-gated until they have executable acceptance tests.
+- Bumped source install/plugin manifests to `0.3.0`.
+
 ## 0.2.0 - 2026-06-16
 
 - Added Streetman Lean as a first-class subsystem: host instructions, review,

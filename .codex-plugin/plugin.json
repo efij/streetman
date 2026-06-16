@@ -1,7 +1,7 @@
 {
   "name": "streetman",
-  "version": "0.2.0",
-  "description": "Token-greedy compression, proof certificates, and Lean mode for smallest correct diffs.",
+  "version": "0.3.0",
+  "description": "Token-greedy compression, Lean mode, anchored code transport, and security attestation.",
   "author": { "name": "Streetman" },
   "homepage": "https://github.com/efij/streetman",
   "repository": "https://github.com/efij/streetman",
@@ -10,8 +10,8 @@
   "skills": "./skills/",
   "interface": {
     "displayName": "Streetman",
-    "shortDescription": "Token-greedy compression + Lean proof mode",
-    "longDescription": "Deterministic never-worse token compression plus Streetman Lean: stdlib/native first, smaller diffs, proof certificates, and benchmark gates.",
+    "shortDescription": "Token-greedy compression + Lean + code transport",
+    "longDescription": "Deterministic never-worse token compression plus Streetman Lean, anchored edit transport, schema/log dedup, proof certificates, and offline security attestation.",
     "developerName": "Streetman",
     "category": "Productivity",
     "capabilities": ["Instructions", "Lifecycle hooks"],

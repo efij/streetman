@@ -1,9 +1,9 @@
 {
   "name": "streetman-lean",
   "displayName": "Streetman Lean",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "publisher": "streetman",
-  "description": "Streetman Lean mode plus token-greedy proof gates for smallest correct diffs.",
+  "description": "Streetman Lean mode plus token-greedy, anchored edit, and security proof gates.",
   "engines": {
     "vscode": "^1.90.0"
   },

@@ -8,15 +8,19 @@ use std::{
     process::Command,
 };
 use streetman_core::{
-    accuracy_check, align_cache_prefix,
+    accuracy_check, align_cache_prefix, anchored_diff,
     archive::{retrieval_marker, Archive},
     audit::audit_text,
     audit_files,
-    bench::{compare_against, run_fixture_bench, run_redteam_bench, run_token_greedy_bench},
-    build_run_receipt, check_policy, compile_shortlang, compress, gate_diff, lean_instructions,
-    ponytail_h2h_fixture, ponytail_kill_report, prove_diff, prove_diff_with_normal_twin,
-    review_diff, token_estimate, verify_certificate, CompressionCertificate, CompressionMode,
-    ContentDomain, LeanGateConfig, LeanMode, StreetmanConfig,
+    bench::{
+        compare_against, run_final_kf_bench, run_fixture_bench, run_redteam_bench,
+        run_token_greedy_bench,
+    },
+    build_run_receipt, check_policy, compile_shortlang, compress, elide_unchanged_regions,
+    gate_diff, lean_instructions, ponytail_h2h_fixture, ponytail_kill_report, prove_diff,
+    prove_diff_with_normal_twin, review_diff, security_attestation, token_estimate,
+    verify_certificate, CompressionCertificate, CompressionMode, ContentDomain, LeanGateConfig,
+    LeanMode, StreetmanConfig,
 };
 
 #[derive(Parser)]
@@ -138,6 +142,14 @@ enum Commands {
         #[arg(long)]
         out: Option<PathBuf>,
     },
+    Code {
+        #[command(subcommand)]
+        command: CodeCommand,
+    },
+    Security {
+        #[command(subcommand)]
+        command: SecurityCommand,
+    },
     Gateway {
         #[command(subcommand)]
         command: GatewayCommand,
@@ -189,6 +201,33 @@ enum BenchCommand {
     CaptureCompetitors {
         #[arg(long, default_value = "benchmarks/results/competitor-live.json")]
         out: PathBuf,
+    },
+}
+
+#[derive(Subcommand)]
+enum CodeCommand {
+    Diff {
+        #[arg(long)]
+        before: PathBuf,
+        #[arg(long)]
+        after: PathBuf,
+        #[arg(long)]
+        json: bool,
+    },
+    Elide {
+        file: PathBuf,
+        #[arg(long, default_value_t = 3)]
+        keep: usize,
+        #[arg(long)]
+        json: bool,
+    },
+}
+
+#[derive(Subcommand)]
+enum SecurityCommand {
+    Attest {
+        #[arg(long)]
+        json: bool,
     },
 }
 
@@ -559,6 +598,8 @@ fn main() -> anyhow::Result<()> {
             html,
             out,
         } => run_diff(original, compressed, html, out)?,
+        Commands::Code { command } => run_code(command)?,
+        Commands::Security { command } => run_security(command)?,
         Commands::Gateway { command } => run_gateway(command)?,
         Commands::AccuracyCheck {
             original,
@@ -980,6 +1021,7 @@ fn run_bench(command: BenchCommand) -> anyhow::Result<()> {
                 "absolute-win" => run_fixture_bench(),
                 "redteam" | "redteam-safety" => run_redteam_bench(),
                 "token-greedy" | "case1-case2" => run_token_greedy_bench(),
+                "final-case" | "final-case-0.3" => run_final_kf_bench(),
                 other => bail!("unknown bench suite: {other}"),
             };
             let json = serde_json::to_string_pretty(&result)?;
@@ -1000,15 +1042,21 @@ fn run_bench(command: BenchCommand) -> anyhow::Result<()> {
             let fixture = run_fixture_bench();
             let redteam = run_redteam_bench();
             let token_greedy = run_token_greedy_bench();
+            let final_kf = run_final_kf_bench();
             println!(
                 "{}",
                 serde_json::to_string_pretty(&serde_json::json!({
                     "absolute_win": fixture,
                     "redteam": redteam,
-                    "token_greedy": token_greedy
+                    "token_greedy": token_greedy,
+                    "final_kf": final_kf
                 }))?
             );
-            if !fixture.gates_passed || !redteam.gates_passed || !token_greedy.gates_passed {
+            if !fixture.gates_passed
+                || !redteam.gates_passed
+                || !token_greedy.gates_passed
+                || !final_kf.gates_passed
+            {
                 bail!("accuracy fixtures failed");
             }
         }
@@ -1053,6 +1101,57 @@ fn run_bench(command: BenchCommand) -> anyhow::Result<()> {
                 );
             }
             print!("{}", String::from_utf8_lossy(&output.stdout));
+        }
+    }
+    Ok(())
+}
+
+fn run_code(command: CodeCommand) -> anyhow::Result<()> {
+    match command {
+        CodeCommand::Diff {
+            before,
+            after,
+            json,
+        } => {
+            let before_text = fs::read_to_string(&before)
+                .with_context(|| format!("failed to read {}", before.display()))?;
+            let after_text = fs::read_to_string(&after)
+                .with_context(|| format!("failed to read {}", after.display()))?;
+            let report = anchored_diff(&before_text, &after_text);
+            if json {
+                println!("{}", serde_json::to_string_pretty(&report)?);
+            } else {
+                print!("{}", report.transport);
+            }
+        }
+        CodeCommand::Elide { file, keep, json } => {
+            let input = fs::read_to_string(&file)
+                .with_context(|| format!("failed to read {}", file.display()))?;
+            let report = elide_unchanged_regions(&input, keep);
+            if json {
+                println!("{}", serde_json::to_string_pretty(&report)?);
+            } else {
+                print!("{}", report.output);
+            }
+        }
+    }
+    Ok(())
+}
+
+fn run_security(command: SecurityCommand) -> anyhow::Result<()> {
+    match command {
+        SecurityCommand::Attest { json } => {
+            let report = security_attestation();
+            if json {
+                println!("{}", serde_json::to_string_pretty(&report)?);
+            } else {
+                println!("streetman security attestation {}", report.version);
+                println!("profile: {}", report.profile);
+                for claim in report.claims {
+                    println!("{} [{}] {}", claim.id, claim.status, claim.evidence);
+                }
+                println!("signed_summary: {}", report.signed_summary);
+            }
         }
     }
     Ok(())
