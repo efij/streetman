@@ -1,7 +1,7 @@
 {
   "name": "streetman-lean",
   "displayName": "Streetman Lean",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "publisher": "streetman",
   "description": "Streetman Lean plus all-lanes token, code transport, and security proof gates.",
   "engines": {

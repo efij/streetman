@@ -127,7 +127,7 @@ Nobody else in the category offers independent verification infra.
 cargo install --git https://github.com/efij/streetman streetman-cli --bin streetman --locked
 ```
 
-This installs the latest pushed source version. Current source release: `1.0.0`.
+This installs the latest pushed source version. Current source release: `1.0.1`.
 
 Run the fixture gate after install:
 
@@ -188,6 +188,9 @@ streetman bench run --suite final-case
 
 # Check local policy-as-code
 streetman policy check --mode ultra --domain prose README.md
+streetman policy protect --config .streetman.toml
+streetman policy verify --config .streetman.toml
+streetman policy push --config .streetman.toml --registry .streetman-policy-registry
 
 # Build a local HTML compression diff
 streetman diff original.txt compressed.txt --html --out benchmarks/results/compression-diff.html

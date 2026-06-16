@@ -1248,30 +1248,8 @@ fn compression_accuracy_check(
         }
         ContentDomain::CodeMap => accuracy_check(&filter_code_structure_lines(original), candidate),
         ContentDomain::Code => accuracy_check(&filter_code_logic_lines(original), candidate),
-        ContentDomain::Prose | ContentDomain::Docs => {
-            accuracy_from_tokens(prose_protected_tokens(original), candidate)
-        }
+        ContentDomain::Prose | ContentDomain::Docs => accuracy_check(original, candidate),
         _ => accuracy_check(original, candidate),
-    }
-}
-
-fn accuracy_from_tokens(protected: Vec<String>, candidate: &str) -> AccuracyReport {
-    let missing = protected
-        .iter()
-        .filter(|token| !candidate.contains(token.as_str()))
-        .cloned()
-        .collect::<Vec<_>>();
-    let preserved = protected.len().saturating_sub(missing.len());
-    let score = if protected.is_empty() || missing.is_empty() {
-        100
-    } else {
-        ((preserved as f64 / protected.len() as f64) * 100.0).round() as u8
-    };
-    AccuracyReport {
-        score,
-        protected_count: protected.len(),
-        protected_preserved: preserved,
-        missing,
     }
 }
 
@@ -1683,5 +1661,17 @@ mod tests {
             .caveat
             .unwrap_or_default()
             .contains("does not claim"));
+    }
+
+    #[test]
+    fn ultra_reverts_when_strict_accuracy_would_score_low() {
+        let input = "React uses `useMemo` because an inline object reference changes on every render. Preserve userProfileToken and paymentProcessorConfig.";
+        let result = compress(input, CompressionMode::Ultra, ContentDomain::Prose);
+        let strict = accuracy_check(input, &result.compressed);
+        assert_eq!(strict.score, 100);
+        assert_eq!(result.certificate.accuracy_score, 100);
+        assert!(result.compressed.contains("userProfileToken"));
+        assert!(result.compressed.contains("paymentProcessorConfig"));
+        assert!(result.fallback_reason.is_some());
     }
 }

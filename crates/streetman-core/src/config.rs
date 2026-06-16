@@ -1,5 +1,8 @@
 use serde::{Deserialize, Serialize};
-use std::{fs, path::Path};
+use std::{
+    fs,
+    path::{Path, PathBuf},
+};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
@@ -106,6 +109,34 @@ pub struct PolicyReport {
     pub warnings: Vec<String>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProtectedConfig {
+    pub format: String,
+    pub protected_at: String,
+    pub config_path: String,
+    pub policy_name: String,
+    pub content_hash: String,
+    pub signature: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ConfigVerification {
+    pub status: String,
+    pub content_hash_match: bool,
+    pub signature_match: bool,
+    pub expected_hash: String,
+    pub actual_hash: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ConfigPushReceipt {
+    pub status: String,
+    pub registry_dir: String,
+    pub config_copy: String,
+    pub manifest: String,
+    pub protected: ProtectedConfig,
+}
+
 impl PolicyReport {
     pub fn passed(&self) -> bool {
         self.violations.is_empty()
@@ -164,5 +195,127 @@ pub fn check_policy(
         gateway_targets: cfg.gateway_targets.clone(),
         violations,
         warnings,
+    }
+}
+
+pub fn protect_config(path: impl AsRef<Path>) -> anyhow::Result<ProtectedConfig> {
+    let path = path.as_ref();
+    let raw = fs::read_to_string(path)?;
+    let cfg = StreetmanConfig::load_from(path)?;
+    let content_hash = blake3::hash(raw.as_bytes()).to_hex().to_string();
+    let protected_at = chrono::Utc::now().to_rfc3339();
+    let signature = config_signature(&cfg.policy_name, &content_hash, &protected_at);
+    Ok(ProtectedConfig {
+        format: "streetman-protected-config-v1".to_string(),
+        protected_at,
+        config_path: path.display().to_string(),
+        policy_name: cfg.policy_name,
+        content_hash,
+        signature,
+    })
+}
+
+pub fn verify_protected_config(
+    path: impl AsRef<Path>,
+    protected: &ProtectedConfig,
+) -> anyhow::Result<ConfigVerification> {
+    let raw = fs::read_to_string(path)?;
+    let actual_hash = blake3::hash(raw.as_bytes()).to_hex().to_string();
+    let expected_signature = config_signature(
+        &protected.policy_name,
+        &protected.content_hash,
+        &protected.protected_at,
+    );
+    let content_hash_match = actual_hash == protected.content_hash;
+    let signature_match = expected_signature == protected.signature;
+    Ok(ConfigVerification {
+        status: if content_hash_match && signature_match {
+            "pass"
+        } else {
+            "fail"
+        }
+        .to_string(),
+        content_hash_match,
+        signature_match,
+        expected_hash: protected.content_hash.clone(),
+        actual_hash,
+    })
+}
+
+pub fn push_protected_config(
+    path: impl AsRef<Path>,
+    registry_dir: impl AsRef<Path>,
+) -> anyhow::Result<ConfigPushReceipt> {
+    let path = path.as_ref();
+    let registry_dir = registry_dir.as_ref();
+    fs::create_dir_all(registry_dir)?;
+    let protected = protect_config(path)?;
+    let short_hash = &protected.content_hash[..12];
+    let config_copy = registry_dir.join(format!("streetman-policy-{short_hash}.toml"));
+    let manifest = registry_dir.join(format!("streetman-policy-{short_hash}.protected.json"));
+    fs::copy(path, &config_copy)?;
+    fs::write(&manifest, serde_json::to_string_pretty(&protected)?)?;
+    Ok(ConfigPushReceipt {
+        status: "pushed".to_string(),
+        registry_dir: registry_dir.display().to_string(),
+        config_copy: config_copy.display().to_string(),
+        manifest: manifest.display().to_string(),
+        protected,
+    })
+}
+
+pub fn read_protected_config(path: impl AsRef<Path>) -> anyhow::Result<ProtectedConfig> {
+    let raw = fs::read_to_string(path)?;
+    Ok(serde_json::from_str(&raw)?)
+}
+
+fn config_signature(policy_name: &str, content_hash: &str, protected_at: &str) -> String {
+    blake3::hash(
+        format!("streetman-config-protect-v1:{policy_name}:{content_hash}:{protected_at}")
+            .as_bytes(),
+    )
+    .to_hex()
+    .to_string()
+}
+
+pub fn default_protected_config_path(config: impl AsRef<Path>) -> PathBuf {
+    let config = config.as_ref();
+    config.with_extension(format!(
+        "{}protected.json",
+        config
+            .extension()
+            .and_then(|extension| extension.to_str())
+            .map(|extension| format!("{extension}."))
+            .unwrap_or_default()
+    ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn protects_verifies_and_pushes_config() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = dir.path().join("streetman.toml");
+        fs::write(
+            &config,
+            r#"policy_name = "team-a"
+telemetry = true
+"#,
+        )
+        .unwrap();
+        let protected = protect_config(&config).unwrap();
+        assert_eq!(protected.policy_name, "team-a");
+        let verification = verify_protected_config(&config, &protected).unwrap();
+        assert_eq!(verification.status, "pass");
+        fs::write(&config, r#"policy_name = "team-a-mutated""#).unwrap();
+        let verification = verify_protected_config(&config, &protected).unwrap();
+        assert_eq!(verification.status, "fail");
+
+        fs::write(&config, r#"policy_name = "team-a""#).unwrap();
+        let receipt = push_protected_config(&config, dir.path().join("registry")).unwrap();
+        assert!(Path::new(&receipt.config_copy).exists());
+        assert!(Path::new(&receipt.manifest).exists());
     }
 }

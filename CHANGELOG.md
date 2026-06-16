@@ -1,5 +1,22 @@
 # Changelog
 
+## 1.0.1 - 2026-06-16
+
+- Fixed the `ultra` truncation bug: prose/docs compression now uses the same
+  strict protected-token accuracy checker as `streetman accuracy-check` before
+  emitting output. If strict accuracy would fail, Streetman falls back or
+  reverts raw.
+- Added a regression test for the camelCase loss case where `ultra` previously
+  emitted a certificate score of 100 while standalone `accuracy-check` scored
+  the result below 100.
+- Added enterprise config controls:
+  `streetman policy protect`, `streetman policy verify`, and
+  `streetman policy push`.
+- Added protected config manifests with content hash + deterministic signature,
+  plus local registry push receipts for distributing/verifying the exact
+  `.streetman.toml` policy file.
+- Bumped source install/plugin manifests to `1.0.1`.
+
 ## 1.0.0 - 2026-06-16
 
 - Added `streetman bench run --suite all-lanes`, the major-version gate covering

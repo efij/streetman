@@ -1,6 +1,6 @@
 {
   "name": "streetman",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "All-lanes local compression, Lean mode, code transport, and enterprise controls.",
   "author": { "name": "Streetman" }
 }

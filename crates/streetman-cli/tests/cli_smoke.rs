@@ -337,6 +337,58 @@ fn cli_code_transport_and_security_smoke() {
 }
 
 #[test]
+fn cli_policy_protect_verify_push_smoke() {
+    let dir = std::env::temp_dir().join(format!("streetman-cli-policy-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).expect("mkdir");
+    let config = dir.join(".streetman.toml");
+    let manifest = dir.join(".streetman.toml.protected.json");
+    let registry = dir.join("registry");
+    std::fs::write(
+        &config,
+        r#"policy_name = "team-policy"
+telemetry = false
+"#,
+    )
+    .expect("write config");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_streetman"))
+        .args(["policy", "protect", "--config"])
+        .arg(&config)
+        .arg("--out")
+        .arg(&manifest)
+        .stdout(Stdio::piped())
+        .output()
+        .expect("policy protect");
+    assert!(output.status.success());
+    assert!(manifest.exists());
+
+    let output = Command::new(env!("CARGO_BIN_EXE_streetman"))
+        .args(["policy", "verify", "--config"])
+        .arg(&config)
+        .arg("--manifest")
+        .arg(&manifest)
+        .stdout(Stdio::piped())
+        .output()
+        .expect("policy verify");
+    assert!(output.status.success());
+    let stdout = String::from_utf8(output.stdout).expect("utf8");
+    assert!(stdout.contains("\"status\": \"pass\""));
+
+    let output = Command::new(env!("CARGO_BIN_EXE_streetman"))
+        .args(["policy", "push", "--config"])
+        .arg(&config)
+        .arg("--registry")
+        .arg(&registry)
+        .stdout(Stdio::piped())
+        .output()
+        .expect("policy push");
+    assert!(output.status.success());
+    let stdout = String::from_utf8(output.stdout).expect("utf8");
+    assert!(stdout.contains("\"status\": \"pushed\""));
+    assert!(std::fs::read_dir(&registry).expect("registry").count() >= 2);
+}
+
+#[test]
 fn cli_accuracy_fixtures_include_token_greedy() {
     let output = Command::new(env!("CARGO_BIN_EXE_streetman"))
         .args(["bench", "accuracy-fixtures"])

@@ -7,7 +7,7 @@ cargo install --git https://github.com/efij/streetman streetman-cli --bin street
 ```
 
 The Git install path tracks the latest pushed source release. Current source
-release: `1.0.0`.
+release: `1.0.1`.
 
 Build and run locally:
 
@@ -32,6 +32,9 @@ Use the code-transport and security surfaces:
 cargo run --bin streetman -- code diff --before old.rs --after new.rs --json
 cargo run --bin streetman -- code elide src/lib.rs --keep 3 --json
 cargo run --bin streetman -- security attest --json
+cargo run --bin streetman -- policy protect --config .streetman.toml
+cargo run --bin streetman -- policy verify --config .streetman.toml
+cargo run --bin streetman -- policy push --config .streetman.toml --registry .streetman-policy-registry
 ```
 
 Compare against the tracked competitor bars:

@@ -22,7 +22,11 @@ pub use compress::{
     tokenizer_profile, verify_certificate, CompressionCertificate, CompressionMode,
     CompressionResult, ContentDomain, ProofVerification, TokenizerProfile,
 };
-pub use config::{check_policy, PolicyReport, StreetmanConfig};
+pub use config::{
+    check_policy, default_protected_config_path, protect_config, push_protected_config,
+    read_protected_config, verify_protected_config, ConfigPushReceipt, ConfigVerification,
+    PolicyReport, ProtectedConfig, StreetmanConfig,
+};
 pub use lean::{
     audit_files, gate_diff, lean_instructions, ponytail_h2h_fixture, ponytail_kill_report,
     prove_diff, prove_diff_with_normal_twin, review_diff, LeanBenchResult, LeanCertificate,

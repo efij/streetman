@@ -18,7 +18,8 @@ The suite verifies:
 - Performance: local deterministic smoke gate. SIMD/sub-ms daemon performance is
   not claimed yet.
 - Enterprise-local controls: secret classification, security attestation,
-  tamper-evident event hashes, encrypted archive, and Claude tokenizer honesty.
+  tamper-evident event hashes, encrypted archive, protected/pushed config
+  manifests, and Claude tokenizer honesty.
 
 Honest caps:
 

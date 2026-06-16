@@ -17,11 +17,12 @@ use streetman_core::{
         run_redteam_bench, run_token_greedy_bench,
     },
     build_run_receipt, check_policy, classify_sensitive, compile_shortlang, compress,
-    decode_archive_free, elide_unchanged_regions, fit_to_token_budget, gate_diff,
-    lean_instructions, ponytail_h2h_fixture, ponytail_kill_report, prove_diff,
-    prove_diff_with_normal_twin, review_diff, security_attestation, token_estimate,
-    tokenizer_profile, verify_certificate, CompressionCertificate, CompressionMode, ContentDomain,
-    LeanGateConfig, LeanMode, StreetmanConfig,
+    decode_archive_free, default_protected_config_path, elide_unchanged_regions,
+    fit_to_token_budget, gate_diff, lean_instructions, ponytail_h2h_fixture, ponytail_kill_report,
+    protect_config, prove_diff, prove_diff_with_normal_twin, push_protected_config,
+    read_protected_config, review_diff, security_attestation, token_estimate, tokenizer_profile,
+    verify_certificate, verify_protected_config, CompressionCertificate, CompressionMode,
+    ContentDomain, LeanGateConfig, LeanMode, StreetmanConfig,
 };
 
 #[derive(Parser)]
@@ -351,6 +352,24 @@ enum PolicyCommand {
     Print {
         #[arg(long, default_value = ".streetman.toml")]
         config: PathBuf,
+    },
+    Protect {
+        #[arg(long, default_value = ".streetman.toml")]
+        config: PathBuf,
+        #[arg(long)]
+        out: Option<PathBuf>,
+    },
+    Verify {
+        #[arg(long, default_value = ".streetman.toml")]
+        config: PathBuf,
+        #[arg(long)]
+        manifest: Option<PathBuf>,
+    },
+    Push {
+        #[arg(long, default_value = ".streetman.toml")]
+        config: PathBuf,
+        #[arg(long, default_value = ".streetman-policy-registry")]
+        registry: PathBuf,
     },
 }
 
@@ -1538,6 +1557,37 @@ fn run_policy(command: PolicyCommand) -> anyhow::Result<()> {
         PolicyCommand::Print { config } => {
             let cfg = StreetmanConfig::load_from(config)?;
             println!("{}", serde_json::to_string_pretty(&cfg)?);
+        }
+        PolicyCommand::Protect { config, out } => {
+            let protected = protect_config(&config)?;
+            let out = out.unwrap_or_else(|| default_protected_config_path(&config));
+            if let Some(parent) = out.parent() {
+                if !parent.as_os_str().is_empty() {
+                    fs::create_dir_all(parent)?;
+                }
+            }
+            fs::write(&out, serde_json::to_string_pretty(&protected)?)?;
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&serde_json::json!({
+                    "status": "protected",
+                    "manifest": out,
+                    "protected": protected
+                }))?
+            );
+        }
+        PolicyCommand::Verify { config, manifest } => {
+            let manifest = manifest.unwrap_or_else(|| default_protected_config_path(&config));
+            let protected = read_protected_config(&manifest)?;
+            let verification = verify_protected_config(&config, &protected)?;
+            println!("{}", serde_json::to_string_pretty(&verification)?);
+            if verification.status != "pass" {
+                bail!("protected config verification failed");
+            }
+        }
+        PolicyCommand::Push { config, registry } => {
+            let receipt = push_protected_config(&config, &registry)?;
+            println!("{}", serde_json::to_string_pretty(&receipt)?);
         }
     }
     Ok(())
