@@ -602,6 +602,67 @@ fn cli_daemon_once_health_smoke() {
 }
 
 #[test]
+fn cli_daemon_rejects_oversized_request() {
+    let listener = std::net::TcpListener::bind(("127.0.0.1", 0)).expect("bind free port");
+    let port = listener.local_addr().expect("addr").port();
+    drop(listener);
+
+    let mut child = Command::new(env!("CARGO_BIN_EXE_streetman"))
+        .args(["daemon", "--once", "--port", &port.to_string()])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("spawn daemon");
+
+    let mut stream = None;
+    for _ in 0..500 {
+        match std::net::TcpStream::connect(("127.0.0.1", port)) {
+            Ok(connected) => {
+                stream = Some(connected);
+                break;
+            }
+            Err(_) => std::thread::sleep(std::time::Duration::from_millis(20)),
+        }
+    }
+    let Some(mut stream) = stream else {
+        let _ = child.kill();
+        let output = child.wait_with_output().expect("wait failed daemon");
+        panic!(
+            "connect daemon failed\nstdout={}\nstderr={}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+    };
+    {
+        use std::io::Write;
+        let body = "x".repeat(70 * 1024);
+        let request = format!(
+            "POST /v1/compress HTTP/1.1\r\nhost: 127.0.0.1\r\ncontent-length: {}\r\n\r\n{}",
+            body.len(),
+            body
+        );
+        stream.write_all(request.as_bytes()).expect("write request");
+        stream
+            .shutdown(std::net::Shutdown::Write)
+            .expect("shutdown write");
+    }
+    let mut response = String::new();
+    {
+        use std::io::Read;
+        match stream.read_to_string(&mut response) {
+            Ok(_) => {}
+            Err(err)
+                if err.kind() == std::io::ErrorKind::ConnectionReset && !response.is_empty() => {}
+            Err(err) => panic!("read response: {err:?}"),
+        }
+    }
+    let output = child.wait_with_output().expect("wait daemon");
+    assert!(output.status.success());
+    assert!(response.contains("413 Payload Too Large"));
+    assert!(response.contains("request too large"));
+}
+
+#[test]
 fn cli_lean_kill_reports_feature_win() {
     let output = Command::new(env!("CARGO_BIN_EXE_streetman"))
         .args(["lean", "kill", "--against", "ponytail", "--json"])

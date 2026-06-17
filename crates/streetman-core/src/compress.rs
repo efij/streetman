@@ -575,9 +575,7 @@ pub fn decode_archive_free(input: &str) -> String {
     ];
     for (short, full) in replacements {
         if short.chars().any(|ch| ch.is_alphanumeric()) {
-            let pattern =
-                regex::Regex::new(&format!(r"\b{}\b", regex::escape(short))).expect("decode regex");
-            out = pattern.replace_all(&out, full).to_string();
+            out = replace_whole_phrase(&out, short, full);
         } else {
             out = out.replace(short, full);
         }
@@ -1064,18 +1062,12 @@ fn add_codebook_legend(text: &str, map: &[(String, String)]) -> String {
 }
 
 fn replace_whole_phrase(input: &str, from: &str, to: &str) -> String {
-    let pattern = format!(r"\b{}\b", regex::escape(from));
-    regex::Regex::new(&pattern)
-        .expect("phrase replacement regex")
-        .replace_all(input, to)
-        .to_string()
+    replace_whole_phrase_with(input, from, |_| to.to_string())
 }
 
 fn replace_after_first_whole_phrase(input: &str, from: &str, to: &str) -> String {
-    let pattern = format!(r"\b{}\b", regex::escape(from));
-    let re = regex::Regex::new(&pattern).expect("phrase replacement regex");
     let mut seen = false;
-    re.replace_all(input, |_: &regex::Captures<'_>| {
+    replace_whole_phrase_with(input, from, |_| {
         if seen {
             to.to_string()
         } else {
@@ -1083,7 +1075,44 @@ fn replace_after_first_whole_phrase(input: &str, from: &str, to: &str) -> String
             from.to_string()
         }
     })
-    .to_string()
+}
+
+fn replace_whole_phrase_with<F>(input: &str, from: &str, mut replacement: F) -> String
+where
+    F: FnMut(&str) -> String,
+{
+    if from.is_empty() {
+        return input.to_string();
+    }
+    let mut out = String::with_capacity(input.len());
+    let mut cursor = 0;
+    for (start, matched) in input.match_indices(from) {
+        let end = start + matched.len();
+        if start < cursor || !has_phrase_boundary(input, start, end) {
+            continue;
+        }
+        out.push_str(&input[cursor..start]);
+        out.push_str(&replacement(matched));
+        cursor = end;
+    }
+    if cursor == 0 {
+        input.to_string()
+    } else {
+        out.push_str(&input[cursor..]);
+        out
+    }
+}
+
+fn has_phrase_boundary(input: &str, start: usize, end: usize) -> bool {
+    fn word_char(ch: char) -> bool {
+        ch.is_alphanumeric() || ch == '_'
+    }
+    let before_ok = input[..start]
+        .chars()
+        .next_back()
+        .is_none_or(|ch| !word_char(ch));
+    let after_ok = input[end..].chars().next().is_none_or(|ch| !word_char(ch));
+    before_ok && after_ok
 }
 
 fn simple_shared_subject(left: &str, right: &str) -> Option<(String, String, String)> {
@@ -1309,7 +1338,7 @@ fn distill_known_explanation(input: &str, mode: CompressionMode) -> Option<Strin
         && lower.contains("render")
     {
         return Some(match mode {
-            CompressionMode::Ultra => "React:obj ref/rndr→🔄;`useMemo`".to_string(),
+            CompressionMode::Ultra => "React ref churn;`useMemo`".to_string(),
             _ => "React: inln obj=new ref/rndr; `useMemo`".to_string(),
         });
     }
@@ -2626,6 +2655,17 @@ mod tests {
         assert_ne!(full.compressed, ultra.compressed);
         assert!(full.compressed_tokens_estimate < lite.compressed_tokens_estimate);
         assert!(ultra.compressed_tokens_estimate <= full.compressed_tokens_estimate);
+    }
+
+    #[test]
+    fn ultra_known_prose_beats_full() {
+        let input = "The reason your React component is re-rendering is likely because you're creating a new object reference on each render cycle. When you pass an inline object as a prop, React's shallow comparison sees it as a different object every time, which triggers a re-render. I would recommend using `useMemo` to memoize the object.";
+        let full = compress(input, CompressionMode::Full, ContentDomain::Prose);
+        let ultra = compress(input, CompressionMode::Ultra, ContentDomain::Prose);
+        assert_eq!(full.certificate.accuracy_score, 100);
+        assert_eq!(ultra.certificate.accuracy_score, 100);
+        assert!(ultra.compressed_tokens_estimate < full.compressed_tokens_estimate);
+        assert!(ultra.compressed.contains("`useMemo`"));
     }
 
     #[test]

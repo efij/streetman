@@ -1494,43 +1494,88 @@ fn run_daemon(port: u16, once: bool) -> anyhow::Result<()> {
     Ok(())
 }
 
+const DAEMON_MAX_REQUEST_BYTES: usize = 64 * 1024;
+const DAEMON_MAX_BODY_BYTES: usize = 48 * 1024;
+
 fn handle_daemon_stream(mut stream: TcpStream) -> anyhow::Result<()> {
-    let mut buffer = [0_u8; 64 * 1024];
+    let mut buffer = [0_u8; DAEMON_MAX_REQUEST_BYTES];
     let read = stream.read(&mut buffer)?;
     let request = String::from_utf8_lossy(&buffer[..read]);
-    let body = request.split("\r\n\r\n").nth(1).unwrap_or_default();
-    let response = if request.starts_with("GET /health ") {
-        serde_json::json!({
+    let (status, response) = if read == DAEMON_MAX_REQUEST_BYTES {
+        (
+            "413 Payload Too Large",
+            serde_json::json!({"status": "error", "error": "request too large"}),
+        )
+    } else if request.starts_with("GET /health ") {
+        (
+            "200 OK",
+            serde_json::json!({
             "status": "ok",
             "service": "streetman-daemon",
             "version": env!("CARGO_PKG_VERSION"),
             "telemetry": false
-        })
+            }),
+        )
     } else if request.starts_with("POST /v1/compress ") {
-        let value: serde_json::Value = serde_json::from_str(body).unwrap_or_default();
+        let Some((_, body)) = request.split_once("\r\n\r\n") else {
+            let response = serde_json::json!({"status": "error", "error": "missing body"});
+            return write_daemon_response(&mut stream, "400 Bad Request", &response);
+        };
+        if body.len() > DAEMON_MAX_BODY_BYTES {
+            let response = serde_json::json!({"status": "error", "error": "body too large"});
+            return write_daemon_response(&mut stream, "413 Payload Too Large", &response);
+        }
+        let value: serde_json::Value = match serde_json::from_str(body) {
+            Ok(value) => value,
+            Err(_) => {
+                let response = serde_json::json!({"status": "error", "error": "invalid json"});
+                return write_daemon_response(&mut stream, "400 Bad Request", &response);
+            }
+        };
         let text = value["text"].as_str().unwrap_or_default();
-        let mode = value["mode"]
+        let mode = match value["mode"]
             .as_str()
             .unwrap_or("full")
             .parse::<CompressionMode>()
-            .unwrap_or(CompressionMode::Full);
-        let domain = value["domain"]
+        {
+            Ok(mode) => mode,
+            Err(err) => {
+                let response = serde_json::json!({"status": "error", "error": err});
+                return write_daemon_response(&mut stream, "400 Bad Request", &response);
+            }
+        };
+        let domain = match value["domain"]
             .as_str()
             .unwrap_or("auto")
             .parse::<ContentDomain>()
-            .unwrap_or(ContentDomain::Auto);
-        serde_json::to_value(compress(text, mode, domain))?
+        {
+            Ok(domain) => domain,
+            Err(err) => {
+                let response = serde_json::json!({"status": "error", "error": err});
+                return write_daemon_response(&mut stream, "400 Bad Request", &response);
+            }
+        };
+        (
+            "200 OK",
+            serde_json::to_value(compress(text, mode, domain))?,
+        )
     } else {
-        serde_json::json!({
+        (
+            "404 Not Found",
+            serde_json::json!({
             "status": "not-found",
             "routes": ["GET /health", "POST /v1/compress"]
-        })
+            }),
+        )
     };
-    let status = if response["status"] == "not-found" {
-        "404 Not Found"
-    } else {
-        "200 OK"
-    };
+    write_daemon_response(&mut stream, status, &response)
+}
+
+fn write_daemon_response(
+    stream: &mut TcpStream,
+    status: &str,
+    response: &serde_json::Value,
+) -> anyhow::Result<()> {
     let body = serde_json::to_string_pretty(&response)?;
     write!(
         stream,

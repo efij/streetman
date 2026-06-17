@@ -70,6 +70,15 @@ impl Archive {
         compressed: &str,
         note: impl Into<String>,
     ) -> anyhow::Result<ArchiveRecord> {
+        let sensitive = classify_sensitive(original);
+        if !sensitive.is_empty() {
+            let kinds = sensitive
+                .iter()
+                .map(|finding| finding.kind.as_str())
+                .collect::<Vec<_>>()
+                .join(",");
+            anyhow::bail!("archive rejected sensitive original before persistence: {kinds}");
+        }
         let hash = blake3::hash(original.as_bytes()).to_hex().to_string();
         let nonce_bytes = nonce_for_hash(&hash);
         let original_bytes = Zeroizing::new(original.as_bytes().to_vec());
@@ -81,16 +90,7 @@ impl Archive {
             self.root.join("archive").join(format!("{hash}.bin")),
             encrypted,
         )?;
-        let sensitive = classify_sensitive(original);
-        let mut note = note.into();
-        if !sensitive.is_empty() && !note.contains("sensitive=") {
-            let kinds = sensitive
-                .iter()
-                .map(|finding| finding.kind.as_str())
-                .collect::<Vec<_>>()
-                .join(",");
-            note = format!("{note}; sensitive=vaulted:{kinds}");
-        }
+        let note = note.into();
         let record = ArchiveRecord {
             hash: hash.clone(),
             created_at: Utc::now(),
@@ -280,13 +280,13 @@ mod tests {
     }
 
     #[test]
-    fn marks_sensitive_archives_and_logs_hash_chain() {
+    fn rejects_sensitive_archives_and_logs_hash_chain() {
         let dir = tempfile::tempdir().unwrap();
         let archive = Archive::open(dir.path()).unwrap();
-        let record = archive
+        let err = archive
             .store("OPENAI_API_KEY=sk-testsecret123", "redacted", "test")
-            .unwrap();
-        assert!(record.note.contains("sensitive=vaulted"));
+            .unwrap_err();
+        assert!(err.to_string().contains("archive rejected sensitive"));
         archive
             .log_event("test", &serde_json::json!({"ok": true}))
             .unwrap();

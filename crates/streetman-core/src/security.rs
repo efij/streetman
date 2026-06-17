@@ -47,7 +47,7 @@ pub fn security_attestation() -> SecurityAttestation {
         SecurityClaim {
             id: "Case-E3".to_string(),
             status: "pass".to_string(),
-            evidence: "secret/PII classifier marks archive records as sensitive before encrypted storage; archive encryption copies plaintext into a Zeroizing buffer".to_string(),
+            evidence: "secret/PII classifier rejects sensitive originals before archive persistence; archive encryption copies accepted plaintext into a Zeroizing buffer".to_string(),
         },
         SecurityClaim {
             id: "Case-E7".to_string(),
