@@ -97,6 +97,12 @@ pub struct CompressionCertificate {
     pub tokenizer_model: String,
     #[serde(default)]
     pub token_guard: String,
+    #[serde(default)]
+    pub transforms: Vec<TransformId>,
+    #[serde(default)]
+    pub decode_ops: Vec<DecodeOp>,
+    #[serde(default)]
+    pub archive_required: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -120,6 +126,113 @@ pub struct TokenizerProfile {
     pub offline: bool,
     pub tokenizer: String,
     pub caveat: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum TransformId {
+    P1Codebook,
+    P2Entropy,
+    P3Coref,
+    P4Synonym,
+    P5Symbol,
+    P6Fusion,
+    P7Elision,
+    P8Respell,
+    Kf9Stacked,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DecodeOp {
+    pub kind: TransformId,
+    pub map: Vec<(String, String)>,
+}
+
+#[derive(Debug, Clone)]
+pub struct ProseCandidate {
+    pub text: String,
+    pub transforms: Vec<TransformId>,
+    pub decode_ops: Vec<DecodeOp>,
+    pub archive_required: bool,
+}
+
+impl ProseCandidate {
+    fn raw(input: &str) -> Self {
+        Self {
+            text: input.to_string(),
+            transforms: Vec::new(),
+            decode_ops: Vec::new(),
+            archive_required: false,
+        }
+    }
+
+    fn from_text(text: String, transform: Option<TransformId>, decode_ops: Vec<DecodeOp>) -> Self {
+        let transforms = transform.into_iter().collect();
+        Self {
+            text,
+            transforms,
+            decode_ops,
+            archive_required: false,
+        }
+    }
+
+    fn chain(mut self, next: ProseCandidate) -> Self {
+        self.text = next.text;
+        self.transforms.extend(next.transforms);
+        self.decode_ops.extend(next.decode_ops);
+        self.archive_required |= next.archive_required;
+        self
+    }
+}
+
+type ProsePass = fn(&str, CompressionMode, &ProseCtx) -> Option<ProseCandidate>;
+// streetman: cap structural n-gram Cases at medium prose; upgrade by caching phrase stats per input.
+const PROSE_STRUCTURAL_WORD_CAP: usize = 160;
+
+struct ProseCtx {
+    model: &'static str,
+    protected: Vec<String>,
+    rewriter: Option<&'static Kf9ProseModel>,
+}
+
+impl ProseCtx {
+    fn new(input: &str) -> Self {
+        Self {
+            model: tokenizer_model(),
+            protected: prose_protected_tokens(input),
+            rewriter: Some(case9_prose_model()),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+struct CompressionCandidate {
+    text: String,
+    transforms: Vec<TransformId>,
+    decode_ops: Vec<DecodeOp>,
+    archive_required: bool,
+}
+
+impl CompressionCandidate {
+    fn plain(text: String) -> Self {
+        Self {
+            text,
+            transforms: Vec::new(),
+            decode_ops: Vec::new(),
+            archive_required: false,
+        }
+    }
+}
+
+impl From<ProseCandidate> for CompressionCandidate {
+    fn from(candidate: ProseCandidate) -> Self {
+        Self {
+            text: candidate.text,
+            transforms: candidate.transforms,
+            decode_ops: candidate.decode_ops,
+            archive_required: candidate.archive_required,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -146,7 +259,7 @@ pub fn compress(input: &str, mode: CompressionMode, domain: ContentDomain) -> Co
     if let Some(reason) = high_stakes_reason(input) {
         return build_result(
             input,
-            input.to_string(),
+            CompressionCandidate::plain(input.to_string()),
             resolved_mode,
             resolved_domain,
             Some(reason),
@@ -155,8 +268,8 @@ pub fn compress(input: &str, mode: CompressionMode, domain: ContentDomain) -> Co
 
     for candidate_mode in fallback_modes(resolved_mode) {
         let candidate = compress_candidate(input, candidate_mode, resolved_domain);
-        let report = compression_accuracy_check(input, &candidate, resolved_domain);
-        if report.score == 100 && token_estimate(&candidate) <= token_estimate(input) {
+        let report = compression_accuracy_check(input, &candidate.text, resolved_domain);
+        if report.score == 100 && token_estimate(&candidate.text) <= token_estimate(input) {
             let fallback_reason = if candidate_mode == resolved_mode {
                 None
             } else {
@@ -176,15 +289,19 @@ pub fn compress(input: &str, mode: CompressionMode, domain: ContentDomain) -> Co
 
     build_result(
         input,
-        input.to_string(),
+        CompressionCandidate::plain(input.to_string()),
         resolved_mode,
         resolved_domain,
         Some("accuracy/token guard reverted output after all modes failed".to_string()),
     )
 }
 
-fn compress_candidate(input: &str, mode: CompressionMode, domain: ContentDomain) -> String {
-    match domain {
+fn compress_candidate(
+    input: &str,
+    mode: CompressionMode,
+    domain: ContentDomain,
+) -> CompressionCandidate {
+    let text = match domain {
         ContentDomain::Json => compress_json(input),
         ContentDomain::Logs | ContentDomain::Shell => compress_logs(input),
         ContentDomain::Search => compress_search(input),
@@ -199,9 +316,10 @@ fn compress_candidate(input: &str, mode: CompressionMode, domain: ContentDomain)
         ContentDomain::Intent | ContentDomain::AgentState => compress_shortlang_input(input),
         ContentDomain::FinalAnswer => compress_prose(input, CompressionMode::Lite),
         ContentDomain::Docs | ContentDomain::Prose | ContentDomain::Auto => {
-            compress_prose(input, mode)
+            return compress_prose_full(input, mode).into();
         }
-    }
+    };
+    CompressionCandidate::plain(text)
 }
 
 fn fallback_modes(mode: CompressionMode) -> Vec<CompressionMode> {
@@ -220,7 +338,7 @@ pub fn fit_to_token_budget(input: &str, domain: ContentDomain, budget: usize) ->
     let resolved_domain = detect_domain(input, domain);
     let mut best = build_result(
         input,
-        input.to_string(),
+        CompressionCandidate::plain(input.to_string()),
         CompressionMode::Lite,
         resolved_domain,
         Some("raw baseline for fit".to_string()),
@@ -241,7 +359,7 @@ pub fn fit_to_token_budget(input: &str, domain: ContentDomain, budget: usize) ->
         if result.compressed_tokens_estimate <= budget {
             return build_result(
                 input,
-                result.compressed,
+                CompressionCandidate::plain(result.compressed),
                 result.mode,
                 resolved_domain,
                 Some(format!("fit budget {budget} with {:?} mode", result.mode)),
@@ -256,11 +374,12 @@ pub fn fit_to_token_budget(input: &str, domain: ContentDomain, budget: usize) ->
 
 fn build_result(
     original: &str,
-    compressed: String,
+    candidate: CompressionCandidate,
     mode: CompressionMode,
     domain: ContentDomain,
     fallback_reason: Option<String>,
 ) -> CompressionResult {
+    let compressed = candidate.text;
     let before = token_estimate(original);
     let after = token_estimate(&compressed);
     debug_assert!(
@@ -314,6 +433,9 @@ fn build_result(
             domain,
             tokenizer_model,
             token_guard,
+            transforms: candidate.transforms,
+            decode_ops: candidate.decode_ops,
+            archive_required: candidate.archive_required,
         },
     }
 }
@@ -421,6 +543,16 @@ pub fn tokenizer_profile(model: Option<&str>) -> TokenizerProfile {
 
 pub fn decode_archive_free(input: &str) -> String {
     let mut out = input.to_string();
+    if let Some(rest) = input.strip_prefix("Legend: ") {
+        if let Some((legend, body)) = rest.split_once('\n') {
+            out = body.to_string();
+            for entry in legend.split(';').map(str::trim).rev() {
+                if let Some((code, phrase)) = entry.split_once('=') {
+                    out = replace_whole_phrase(&out, code.trim(), phrase.trim());
+                }
+            }
+        }
+    }
     let replacements = [
         ("i18n", "internationalization"),
         ("l10n", "localization"),
@@ -437,11 +569,18 @@ pub fn decode_archive_free(input: &str) -> String {
         ("rndr", "render"),
         ("cfg", "configuration"),
         ("config", "configuration"),
+        ("∵", "because"),
+        ("∴", "therefore"),
+        ("→", "results in"),
     ];
     for (short, full) in replacements {
-        let pattern =
-            regex::Regex::new(&format!(r"\b{}\b", regex::escape(short))).expect("decode regex");
-        out = pattern.replace_all(&out, full).to_string();
+        if short.chars().any(|ch| ch.is_alphanumeric()) {
+            let pattern =
+                regex::Regex::new(&format!(r"\b{}\b", regex::escape(short))).expect("decode regex");
+            out = pattern.replace_all(&out, full).to_string();
+        } else {
+            out = out.replace(short, full);
+        }
     }
     out
 }
@@ -537,17 +676,443 @@ fn high_stakes_reason(input: &str) -> Option<String> {
 }
 
 fn compress_prose(input: &str, mode: CompressionMode) -> String {
+    compress_prose_full(input, mode).text
+}
+
+pub fn compress_prose_full(input: &str, mode: CompressionMode) -> ProseCandidate {
+    let ctx = ProseCtx::new(input);
+    let mut candidates = vec![ProseCandidate::raw(input)];
     if let Some(distilled) = distill_known_explanation(input, mode) {
-        return distilled;
-    }
-    if matches!(mode, CompressionMode::Full | CompressionMode::Ultra) {
-        if let Some(stacked) = stacked_prose_rewrite(input, mode) {
-            return stacked;
-        }
+        candidates.push(ProseCandidate::from_text(distilled, None, Vec::new()));
     }
     if let Some(distilled) = distill_long_technical_prose(input, mode) {
-        return distilled;
+        candidates.push(ProseCandidate::from_text(distilled, None, Vec::new()));
     }
+    candidates.push(ProseCandidate::from_text(
+        compress_prose_skeleton(input, mode),
+        None,
+        Vec::new(),
+    ));
+    for pass in prose_passes() {
+        if let Some(candidate) = pass(input, mode, &ctx) {
+            candidates.push(candidate);
+        }
+    }
+    if let Some(candidate) = compose_prose_passes(
+        &[p8_respell, p4_synonym, p6_fusion, p3_coref, p1_codebook],
+        input,
+        mode,
+        &ctx,
+    ) {
+        candidates.push(candidate);
+    }
+    choose_best_lossless_prose_candidate(input, candidates)
+}
+
+fn choose_best_lossless_prose_candidate(
+    input: &str,
+    candidates: Vec<ProseCandidate>,
+) -> ProseCandidate {
+    let model = tokenizer_model();
+    candidates
+        .into_iter()
+        .filter(|candidate| accuracy_check(input, &candidate.text).score == 100)
+        .min_by_key(|candidate| token_estimate_for_model(&candidate.text, model))
+        .unwrap_or_else(|| ProseCandidate::raw(input))
+}
+
+fn prose_passes() -> &'static [ProsePass] {
+    &[
+        p8_respell,
+        p4_synonym,
+        p6_fusion,
+        p3_coref,
+        p1_codebook,
+        p5_symbol,
+        p7_elision,
+        p2_entropy,
+        pass_case9_stacked,
+    ]
+}
+
+fn compose_prose_passes(
+    passes: &[ProsePass],
+    input: &str,
+    mode: CompressionMode,
+    ctx: &ProseCtx,
+) -> Option<ProseCandidate> {
+    let mut cur = ProseCandidate::raw(input);
+    for pass in passes {
+        if let Some(next) = pass(&cur.text, mode, ctx) {
+            if accuracy_check(input, &next.text).score == 100 {
+                cur = cur.chain(next);
+            }
+        }
+    }
+    if cur.transforms.is_empty() {
+        None
+    } else {
+        Some(cur)
+    }
+}
+
+fn pass_case9_stacked(input: &str, mode: CompressionMode, ctx: &ProseCtx) -> Option<ProseCandidate> {
+    let _ = ctx.rewriter?;
+    stacked_prose_rewrite(input, mode)
+        .map(|text| ProseCandidate::from_text(text, Some(TransformId::Kf9Stacked), Vec::new()))
+}
+
+fn p1_codebook(input: &str, _mode: CompressionMode, ctx: &ProseCtx) -> Option<ProseCandidate> {
+    let words = prose_words(input);
+    if words.len() < 12 {
+        return None;
+    }
+    if words.len() > PROSE_STRUCTURAL_WORD_CAP {
+        return None;
+    }
+    let mut counts: HashMap<String, usize> = HashMap::new();
+    for n in 2..=5 {
+        for window in words.windows(n) {
+            let phrase = window.join(" ");
+            if phrase_contains_protected(&phrase, ctx) {
+                continue;
+            }
+            *counts.entry(phrase).or_insert(0) += 1;
+        }
+    }
+    let mut phrases = counts
+        .into_iter()
+        .filter(|(phrase, count)| *count >= 2 && phrase.split_whitespace().count() >= 2)
+        .collect::<Vec<_>>();
+    phrases.sort_by_key(|(phrase, count)| {
+        std::cmp::Reverse(count.saturating_sub(1) * phrase.split_whitespace().count())
+    });
+
+    let mut text = input.to_string();
+    let mut map = Vec::new();
+    for (phrase, _) in phrases.into_iter().take(8) {
+        let code = next_code(map.len(), input)?;
+        let replaced = replace_whole_phrase(&text, &phrase, &code);
+        if replaced == text {
+            continue;
+        }
+        let mut trial_map = map.clone();
+        trial_map.push((code.clone(), phrase.clone()));
+        let trial = add_codebook_legend(&replaced, &trial_map);
+        if token_estimate_for_model(&trial, ctx.model) < token_estimate_for_model(&text, ctx.model)
+        {
+            text = replaced;
+            map = trial_map;
+        }
+    }
+    if map.is_empty() {
+        return None;
+    }
+    let text = add_codebook_legend(&text, &map);
+    prose_candidate_if_better(input, text, TransformId::P1Codebook, map, false, ctx)
+}
+
+fn p3_coref(input: &str, _mode: CompressionMode, ctx: &ProseCtx) -> Option<ProseCandidate> {
+    let words = prose_words(input);
+    if words.len() > PROSE_STRUCTURAL_WORD_CAP {
+        return None;
+    }
+    let mut counts: HashMap<String, usize> = HashMap::new();
+    for n in 2..=4 {
+        for window in words.windows(n) {
+            let phrase = window.join(" ");
+            if phrase_contains_protected(&phrase, ctx) {
+                continue;
+            }
+            *counts.entry(phrase).or_insert(0) += 1;
+        }
+    }
+    let (phrase, _) = counts
+        .into_iter()
+        .filter(|(phrase, count)| *count >= 2 && phrase.split_whitespace().count() > 1)
+        .max_by_key(|(phrase, count)| *count * phrase.split_whitespace().count())?;
+    let code = "itA";
+    if input.split_whitespace().any(|word| trim_word(word) == code) {
+        return None;
+    }
+    let text = replace_after_first_whole_phrase(input, &phrase, code);
+    if text == input {
+        return None;
+    }
+    prose_candidate_if_better(
+        input,
+        text,
+        TransformId::P3Coref,
+        vec![(code.to_string(), phrase)],
+        false,
+        ctx,
+    )
+}
+
+fn p4_synonym(input: &str, _mode: CompressionMode, ctx: &ProseCtx) -> Option<ProseCandidate> {
+    word_map_candidate(
+        input,
+        &[
+            ("approximately", "approx"),
+            ("utilize", "use"),
+            ("utilizes", "uses"),
+            ("prior", "before"),
+            ("subsequent", "after"),
+            ("additional", "extra"),
+            ("multiple", "many"),
+        ],
+        TransformId::P4Synonym,
+        ctx,
+    )
+}
+
+fn p5_symbol(input: &str, _mode: CompressionMode, ctx: &ProseCtx) -> Option<ProseCandidate> {
+    let mut text = input.to_string();
+    let mut map = Vec::new();
+    for (phrase, symbol) in [
+        ("therefore", "∴"),
+        ("results in", "→"),
+        ("because", "∵"),
+        ("without", "w/o"),
+    ] {
+        if token_estimate_for_model(symbol, ctx.model) > 1 || phrase_contains_protected(phrase, ctx)
+        {
+            continue;
+        }
+        let replaced = replace_whole_phrase(&text, phrase, symbol);
+        if replaced != text {
+            text = replaced;
+            map.push((symbol.to_string(), phrase.to_string()));
+        }
+    }
+    if map.is_empty() {
+        return None;
+    }
+    prose_candidate_if_better(input, text, TransformId::P5Symbol, map, false, ctx)
+}
+
+fn p6_fusion(input: &str, _mode: CompressionMode, ctx: &ProseCtx) -> Option<ProseCandidate> {
+    let sentences = split_sentences(input);
+    if sentences.len() < 2 {
+        return None;
+    }
+    let mut out = Vec::new();
+    let mut map = Vec::new();
+    let mut idx = 0;
+    while idx < sentences.len() {
+        if idx + 1 < sentences.len() {
+            if let Some((subject, first, second)) =
+                simple_shared_subject(&sentences[idx], &sentences[idx + 1])
+            {
+                let fused = format!("{subject} {first}, {second}.");
+                map.push((
+                    fused.clone(),
+                    format!("{} {}", sentences[idx], sentences[idx + 1]),
+                ));
+                out.push(fused);
+                idx += 2;
+                continue;
+            }
+        }
+        out.push(sentences[idx].clone());
+        idx += 1;
+    }
+    if map.is_empty() {
+        return None;
+    }
+    prose_candidate_if_better(input, out.join(" "), TransformId::P6Fusion, map, false, ctx)
+}
+
+fn p7_elision(input: &str, mode: CompressionMode, ctx: &ProseCtx) -> Option<ProseCandidate> {
+    if !matches!(mode, CompressionMode::Full | CompressionMode::Ultra) {
+        return None;
+    }
+    let text = [" the ", " a ", " an "]
+        .into_iter()
+        .fold(format!(" {input} "), |acc, article| {
+            acc.replace(article, " ")
+        })
+        .trim()
+        .to_string();
+    prose_candidate_if_better(
+        input,
+        collapse_spaces(&text),
+        TransformId::P7Elision,
+        Vec::new(),
+        true,
+        ctx,
+    )
+}
+
+fn p8_respell(input: &str, _mode: CompressionMode, ctx: &ProseCtx) -> Option<ProseCandidate> {
+    word_map_candidate(
+        input,
+        &[
+            ("cannot", "can't"),
+            ("do not", "don't"),
+            ("does not", "doesn't"),
+            ("is not", "isn't"),
+            ("organisation", "organization"),
+            ("behaviour", "behavior"),
+            ("colour", "color"),
+        ],
+        TransformId::P8Respell,
+        ctx,
+    )
+}
+
+fn p2_entropy(input: &str, _mode: CompressionMode, ctx: &ProseCtx) -> Option<ProseCandidate> {
+    let _ = input;
+    let _ = ctx.rewriter?;
+    None
+}
+
+fn prose_candidate_if_better(
+    input: &str,
+    text: String,
+    transform: TransformId,
+    map: Vec<(String, String)>,
+    archive_required: bool,
+    ctx: &ProseCtx,
+) -> Option<ProseCandidate> {
+    if text == input
+        || token_estimate_for_model(&text, ctx.model) >= token_estimate_for_model(input, ctx.model)
+        || accuracy_check(input, &text).score != 100
+    {
+        return None;
+    }
+    Some(ProseCandidate {
+        text,
+        transforms: vec![transform],
+        decode_ops: if map.is_empty() {
+            Vec::new()
+        } else {
+            vec![DecodeOp {
+                kind: transform,
+                map,
+            }]
+        },
+        archive_required,
+    })
+}
+
+fn word_map_candidate(
+    input: &str,
+    map_rules: &[(&str, &str)],
+    transform: TransformId,
+    ctx: &ProseCtx,
+) -> Option<ProseCandidate> {
+    let mut text = input.to_string();
+    let mut map = Vec::new();
+    for (from, to) in map_rules {
+        if phrase_contains_protected(from, ctx)
+            || input.split_whitespace().any(|word| trim_word(word) == *to)
+            || token_estimate_for_model(to, ctx.model) >= token_estimate_for_model(from, ctx.model)
+        {
+            continue;
+        }
+        let replaced = replace_whole_phrase(&text, from, to);
+        if replaced != text {
+            text = replaced;
+            map.push((to.to_string(), from.to_string()));
+        }
+    }
+    if map.is_empty() {
+        return None;
+    }
+    prose_candidate_if_better(input, text, transform, map, false, ctx)
+}
+
+fn prose_words(input: &str) -> Vec<String> {
+    input
+        .split_whitespace()
+        .map(trim_word)
+        .filter(|word| word.len() > 2 && word.chars().all(|ch| ch.is_ascii_alphabetic()))
+        .map(str::to_string)
+        .collect()
+}
+
+fn trim_word(word: &str) -> &str {
+    word.trim_matches(|ch: char| !ch.is_alphanumeric() && ch != '_')
+}
+
+fn phrase_contains_protected(phrase: &str, ctx: &ProseCtx) -> bool {
+    ctx.protected.iter().any(|token| phrase.contains(token))
+}
+
+fn next_code(index: usize, input: &str) -> Option<String> {
+    let first = (b'A' + (index % 26) as u8) as char;
+    let code = if index < 26 {
+        first.to_string()
+    } else {
+        format!("A{first}")
+    };
+    if input.split_whitespace().any(|word| trim_word(word) == code) {
+        None
+    } else {
+        Some(code)
+    }
+}
+
+fn add_codebook_legend(text: &str, map: &[(String, String)]) -> String {
+    let legend = map
+        .iter()
+        .map(|(code, phrase)| format!("{code}={phrase}"))
+        .collect::<Vec<_>>()
+        .join("; ");
+    format!("Legend: {legend}\n{text}")
+}
+
+fn replace_whole_phrase(input: &str, from: &str, to: &str) -> String {
+    let pattern = format!(r"\b{}\b", regex::escape(from));
+    regex::Regex::new(&pattern)
+        .expect("phrase replacement regex")
+        .replace_all(input, to)
+        .to_string()
+}
+
+fn replace_after_first_whole_phrase(input: &str, from: &str, to: &str) -> String {
+    let pattern = format!(r"\b{}\b", regex::escape(from));
+    let re = regex::Regex::new(&pattern).expect("phrase replacement regex");
+    let mut seen = false;
+    re.replace_all(input, |_: &regex::Captures<'_>| {
+        if seen {
+            to.to_string()
+        } else {
+            seen = true;
+            from.to_string()
+        }
+    })
+    .to_string()
+}
+
+fn simple_shared_subject(left: &str, right: &str) -> Option<(String, String, String)> {
+    let left = left.trim_end_matches('.');
+    let right = right.trim_end_matches('.');
+    for marker in [" should ", " must ", " can ", " will ", " is ", " are "] {
+        let Some((left_subject, left_rest)) = left.split_once(marker) else {
+            continue;
+        };
+        let Some((right_subject, right_rest)) = right.split_once(marker) else {
+            continue;
+        };
+        if left_subject == right_subject
+            && !left_rest.contains(',')
+            && !right_rest.contains(',')
+            && !left_rest.contains(" and ")
+            && !right_rest.contains(" and ")
+        {
+            return Some((
+                left_subject.to_string(),
+                format!("{}{}", marker.trim_start(), left_rest),
+                right_rest.to_string(),
+            ));
+        }
+    }
+    None
+}
+
+fn compress_prose_skeleton(input: &str, mode: CompressionMode) -> String {
     let mut out = input.to_string();
     for (from, to) in mode_phrase_rules(mode) {
         out = token_greedy_replace_case_insensitive(&out, from, to);
@@ -883,7 +1448,11 @@ fn stacked_prose_rewrite(input: &str, mode: CompressionMode) -> Option<String> {
         candidate.push_str("\nrefs: ");
         candidate.push_str(&missing.join(" "));
     }
-    if token_estimate(&candidate) < token_estimate(input) {
+    let tokenizer = tokenizer_model();
+    if accuracy_check(input, &candidate).score == 100
+        && token_estimate_for_model(&candidate, tokenizer)
+            < token_estimate_for_model(input, tokenizer)
+    {
         Some(candidate)
     } else {
         None
@@ -2082,7 +2651,50 @@ mod tests {
     }
 
     #[test]
-    fn ultra_reverts_when_strict_accuracy_would_score_low() {
+    fn prose_selection_prefers_smaller_lossless_candidate() {
+        let input = "The database configuration should be checked before deployment because observability and accessibility matter.";
+        let skeleton = compress_prose_skeleton(input, CompressionMode::Full);
+        let weak = format!("{skeleton} extra extra extra extra extra");
+
+        assert_eq!(
+            choose_best_lossless_prose_candidate(
+                input,
+                vec![
+                    ProseCandidate::from_text(weak, None, Vec::new()),
+                    ProseCandidate::from_text(skeleton.clone(), None, Vec::new())
+                ]
+            )
+            .text,
+            skeleton
+        );
+    }
+
+    #[test]
+    fn p1_codebook_is_net_positive_and_decodable() {
+        let input = "cache compiled regex objects because latency matters. ".repeat(12);
+        let ctx = ProseCtx::new(&input);
+        let candidate = p1_codebook(&input, CompressionMode::Full, &ctx).expect("p1 candidate");
+        assert!(candidate.transforms.contains(&TransformId::P1Codebook));
+        assert!(candidate.text.starts_with("Legend: "));
+        assert!(token_estimate(&candidate.text) < token_estimate(&input));
+        assert!(decode_archive_free(&candidate.text).contains("cache compiled regex objects"));
+    }
+
+    #[test]
+    fn prose_certificate_records_transform_metadata() {
+        let input = "cache compiled regex objects because latency matters. ".repeat(12);
+        let result = compress(&input, CompressionMode::Full, ContentDomain::Prose);
+        assert_eq!(result.certificate.accuracy_score, 100);
+        assert!(result.compressed_tokens_estimate <= result.original_tokens_estimate);
+        assert!(!result.certificate.transforms.is_empty());
+        assert_eq!(
+            result.certificate.transforms,
+            compress_prose_full(&input, CompressionMode::Full).transforms
+        );
+    }
+
+    #[test]
+    fn ultra_preserves_protected_tokens() {
         let input = "React uses `useMemo` because an inline object reference changes on every render. Preserve userProfileToken and paymentProcessorConfig.";
         let result = compress(input, CompressionMode::Ultra, ContentDomain::Prose);
         let strict = accuracy_check(input, &result.compressed);
@@ -2090,6 +2702,5 @@ mod tests {
         assert_eq!(result.certificate.accuracy_score, 100);
         assert!(result.compressed.contains("userProfileToken"));
         assert!(result.compressed.contains("paymentProcessorConfig"));
-        assert!(result.fallback_reason.is_some());
     }
 }
