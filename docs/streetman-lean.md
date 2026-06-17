@@ -16,7 +16,7 @@ streetman lean kill --against ponytail --json
 ```
 
 Feature-wise kill status is machine-readable: `streetman lean kill --against
-ponytail --json` returns `feature_kill: true` when every Ponytail feature row is
+ponytail --json` returns `feature_parity: true` when every Ponytail feature row is
 covered and Streetman's extra proof/compression/gateway features are present.
 
 Public performance claims still require a live provider replay. The built-in

@@ -13,15 +13,15 @@ use streetman_core::{
     audit::audit_text,
     audit_files,
     bench::{
-        compare_against, run_absolute_win_v2_bench, run_absolute_win_v3_bench,
-        run_absolute_win_v4_bench, run_all_lanes_bench, run_final_kf_bench, run_fixture_bench,
+        compare_against, run_quality_gate_v2_bench, run_quality_gate_v3_bench,
+        run_quality_gate_v4_bench, run_all_lanes_bench, run_final_caps_bench, run_fixture_bench,
         run_redteam_bench, run_token_greedy_bench,
     },
     build_run_receipt, builtin_oracle, check_policy, classify_sensitive, compile_shortlang,
     compliance_map, compress, decode_archive_free, default_protected_config_path,
     deployment_bundle, elide_unchanged_regions, enterprise_config_template, enterprise_report,
     fit_to_token_budget, gate_diff, lean_instructions, observability_template,
-    ponytail_h2h_fixture, ponytail_kill_report, protect_config, prove_diff,
+    ponytail_h2h_fixture, ponytail_parity_report, protect_config, prove_diff,
     prove_diff_with_normal_twin, push_protected_config, rbac_template, read_protected_config,
     release_attestation, review_diff, sbom, security_attestation, token_estimate,
     tokenizer_profile, verify_certificate, verify_protected_config, CompressionCertificate,
@@ -211,7 +211,7 @@ enum AuditCommand {
 #[derive(Subcommand)]
 enum BenchCommand {
     Run {
-        #[arg(long, default_value = "absolute-win")]
+        #[arg(long, default_value = "quality-gate")]
         suite: String,
         #[arg(long)]
         out: Option<PathBuf>,
@@ -395,7 +395,7 @@ enum LeanCommand {
         #[command(subcommand)]
         command: LeanBenchCommand,
     },
-    Kill {
+    Parity {
         #[arg(long, default_value = "ponytail")]
         against: String,
         #[arg(long)]
@@ -1022,7 +1022,7 @@ fn run_duel(against: &str, trace: PathBuf, html: bool, out: Option<PathBuf>) -> 
         "status": "streetman-measured-headroom-baseline-estimated",
         "avg_delta_pp": avg_delta,
         "cases": cases,
-        "note": "Use committed Headroom run artifacts or install Headroom CLI for external replay before making public absolute-win claims."
+        "note": "Use committed Headroom run artifacts or install Headroom CLI for external replay before making public quality-gate claims."
     });
     let rendered = if html {
         render_duel_html(&report)
@@ -1159,14 +1159,14 @@ fn run_audit(command: AuditCommand) -> anyhow::Result<()> {
             }
         }
         AuditCommand::Doctor => {
-            let status = absolute_win_status();
+            let status = quality_gate_status();
             println!(
                 "{}",
                 serde_json::to_string_pretty(&serde_json::json!({
                     "status": "ok",
                     "telemetry": "off",
                     "archive": "~/.streetman/streetman.sqlite3",
-                    "absolute_win": status
+                    "quality_gate": status
                 }))?
             );
         }
@@ -1175,7 +1175,7 @@ fn run_audit(command: AuditCommand) -> anyhow::Result<()> {
                 "{}",
                 serde_json::to_string_pretty(&serde_json::json!({
                     "status": "local-ledger-ready",
-                    "note": "savings are recorded only after compression events; absolute-win savings require benchmark snapshots"
+                    "note": "savings are recorded only after compression events; quality-gate savings require benchmark snapshots"
                 }))?
             );
         }
@@ -1190,16 +1190,16 @@ fn run_bench(command: BenchCommand) -> anyhow::Result<()> {
     match command {
         BenchCommand::Run { suite, out } => {
             let result = match suite.as_str() {
-                "absolute-win" => run_fixture_bench(),
+                "quality-gate" => run_fixture_bench(),
                 "redteam" | "redteam-safety" => run_redteam_bench(),
-                "token-greedy" | "case1-case2" => run_token_greedy_bench(),
-                "final-case" | "final-case-0.3" => run_final_kf_bench(),
+                "token-greedy" | "token-greedy-pair" => run_token_greedy_bench(),
+                "capabilities" | "capabilities-0.3" => run_final_caps_bench(),
                 "all-lanes" | "all-lanes-1.0" => run_all_lanes_bench(),
-                "absolute-win-2" | "absolute-win-2.0" | "all-17" => run_absolute_win_v2_bench(),
-                "absolute-win-3" | "absolute-win-3.0" | "entire-plan" => {
-                    run_absolute_win_v3_bench()
+                "quality-gate-2" | "quality-gate-2.0" | "full-matrix" => run_quality_gate_v2_bench(),
+                "quality-gate-3" | "quality-gate-3.0" | "complete-plan" => {
+                    run_quality_gate_v3_bench()
                 }
-                "absolute-win-4" | "absolute-win-4.0" | "all-kfs" => run_absolute_win_v4_bench(),
+                "quality-gate-4" | "quality-gate-4.0" | "all-capabilities" => run_quality_gate_v4_bench(),
                 other => bail!("unknown bench suite: {other}"),
             };
             let json = serde_json::to_string_pretty(&result)?;
@@ -1220,32 +1220,32 @@ fn run_bench(command: BenchCommand) -> anyhow::Result<()> {
             let fixture = run_fixture_bench();
             let redteam = run_redteam_bench();
             let token_greedy = run_token_greedy_bench();
-            let final_kf = run_final_kf_bench();
+            let final_caps = run_final_caps_bench();
             let all_lanes = run_all_lanes_bench();
-            let absolute_win_v2 = run_absolute_win_v2_bench();
-            let absolute_win_v3 = run_absolute_win_v3_bench();
-            let absolute_win_v4 = run_absolute_win_v4_bench();
+            let quality_gate_v2 = run_quality_gate_v2_bench();
+            let quality_gate_v3 = run_quality_gate_v3_bench();
+            let quality_gate_v4 = run_quality_gate_v4_bench();
             println!(
                 "{}",
                 serde_json::to_string_pretty(&serde_json::json!({
-                    "absolute_win": fixture,
+                    "quality_gate": fixture,
                     "redteam": redteam,
                     "token_greedy": token_greedy,
-                    "final_kf": final_kf,
+                    "final_caps": final_caps,
                     "all_lanes": all_lanes,
-                    "absolute_win_v2": absolute_win_v2,
-                    "absolute_win_v3": absolute_win_v3,
-                    "absolute_win_v4": absolute_win_v4
+                    "quality_gate_v2": quality_gate_v2,
+                    "quality_gate_v3": quality_gate_v3,
+                    "quality_gate_v4": quality_gate_v4
                 }))?
             );
             if !fixture.gates_passed
                 || !redteam.gates_passed
                 || !token_greedy.gates_passed
-                || !final_kf.gates_passed
+                || !final_caps.gates_passed
                 || !all_lanes.gates_passed
-                || !absolute_win_v2.gates_passed
-                || !absolute_win_v3.gates_passed
-                || !absolute_win_v4.gates_passed
+                || !quality_gate_v2.gates_passed
+                || !quality_gate_v3.gates_passed
+                || !quality_gate_v4.gates_passed
             {
                 bail!("accuracy fixtures failed");
             }
@@ -1750,15 +1750,15 @@ fn run_lean(command: LeanCommand) -> anyhow::Result<()> {
                 }
             }
         },
-        LeanCommand::Kill { against, json } => {
+        LeanCommand::Parity { against, json } => {
             if against != "ponytail" && against != "DietrichGebert/ponytail" {
-                bail!("only ponytail kill reports are implemented");
+                bail!("only ponytail parity reports are implemented");
             }
-            let report = ponytail_kill_report();
+            let report = ponytail_parity_report();
             if json {
                 println!("{}", serde_json::to_string_pretty(&report)?);
             } else {
-                println!("{}", render_kill_report(&report));
+                println!("{}", render_parity_report(&report));
             }
         }
     }
@@ -1921,12 +1921,12 @@ fn render_lean_report(report: &streetman_core::LeanReport) -> String {
     out
 }
 
-fn render_kill_report(report: &streetman_core::LeanKillReport) -> String {
+fn render_parity_report(report: &streetman_core::LeanParityReport) -> String {
     let mut out = String::new();
     out.push_str(&format!(
-        "Streetman vs {}\nfeature_kill={}\nverdict={}\npublic_performance_claim_ready={}\n",
+        "Streetman vs {}\nfeature_parity={}\nverdict={}\npublic_performance_claim_ready={}\n",
         report.against,
-        if report.feature_kill { "YES" } else { "NO" },
+        if report.feature_parity { "YES" } else { "NO" },
         report.verdict,
         report.public_performance_claim_ready
     ));
@@ -2128,7 +2128,7 @@ fn run_mcp(command: McpCommand) -> anyhow::Result<()> {
                         },
                         {
                             "name": "streetman_stats",
-                            "description": "Return local archive totals and absolute-win status.",
+                            "description": "Return local archive totals and quality-gate status.",
                             "input": {}
                         },
                         {
@@ -2198,7 +2198,7 @@ fn handle_mcp_tool(tool: &str, value: &serde_json::Value) -> anyhow::Result<serd
                 "original_tokens_estimate": original,
                 "compressed_tokens_estimate": compressed,
                 "telemetry": "off",
-                "absolute_win": absolute_win_status()
+                "quality_gate": quality_gate_status()
             })
         }
         "streetman_accuracy_check" => {
@@ -2233,7 +2233,7 @@ fn handle_proxy_stream(mut stream: TcpStream, provider: &str) -> anyhow::Result<
                 "status": "ok",
                 "provider": provider,
                 "telemetry": "off",
-                "absolute_win": absolute_win_status()
+                "quality_gate": quality_gate_status()
             }),
         )
     } else if req.starts_with("POST /v1/compress") {
@@ -2362,7 +2362,7 @@ fn forward_with_curl(
     Ok(serde_json::from_str(&raw).unwrap_or_else(|_| serde_json::json!({"raw": raw})))
 }
 
-fn absolute_win_status() -> String {
+fn quality_gate_status() -> String {
     compare_against(&[
         "headroom".to_string(),
         "token-optimizer".to_string(),
@@ -2469,7 +2469,7 @@ table {{ width:100%; border-collapse:collapse; font-size:13px; }} th,td {{ text-
 <div class="shell">
 <nav><div class="brand">streetman</div><a class="active">Overview</a><a>Compression</a><a>Competitors</a><a>Sessions</a><a>Claims</a><a>Archive</a></nav>
 <main>
-<header><h1>Intel Dashboard</h1><div class="status">Absolute win: {}</div></header>
+<header><h1>Intel Dashboard</h1><div class="status">Quality gate: {}</div></header>
 <section class="grid metrics">
 <div class="panel metric"><div class="label">Output Fixture</div><div class="value green">{:.1}%</div><div class="bar"><div class="fill" style="width:{:.1}%"></div></div></div>
 <div class="panel metric"><div class="label">Context Fixture</div><div class="value cyan">{:.1}%</div><div class="bar"><div class="fill" style="width:{:.1}%"></div></div></div>

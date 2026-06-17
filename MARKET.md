@@ -88,7 +88,7 @@ Sub-segmentation of SAM by workload:
 | 2029 | $70B | $150B | $270B |
 | 2030 | $80B | $200B | $400B |
 
-Base case aligns with IDC's $150B by 2027 GenAI all-in and Gartner's ~$300B by 2028 AI-software forecast. **All three scenarios grow the compression SAM** because volume offsets price decline in bear, and dominates in base/bull.
+Base case aligns with IDC's $150B by 2027 GenAI all-in and Gartner's ~$300B by 2028 AI-software forecast. **All three scenarios grow the compression SAM** because volume offsets price decline in bear, and leads in base/bull.
 
 **Key drivers:**
 - Agent adoption (multi-step = multi-token)

@@ -1,9 +1,9 @@
-# Absolute Win 2.0
+# Quality Gate 2.0
 
-Streetman 2.0 adds a named, executable gate for the "absolute win" frame:
+Streetman 2.0 adds a named, executable gate for the "quality gate" frame:
 
 ```bash
-streetman bench run --suite absolute-win-2
+streetman bench run --suite quality-gate-2
 ```
 
 This is not a raw-ratio benchmark. The lane definition is explicit:

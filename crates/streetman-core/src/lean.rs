@@ -127,7 +127,7 @@ pub struct LeanBenchResult {
     pub against: String,
     pub status: String,
     pub claim: String,
-    pub feature_kill: bool,
+    pub feature_parity: bool,
     pub public_performance_claim_ready: bool,
     pub cases: Vec<LeanBenchCase>,
     pub totals: BTreeMap<String, usize>,
@@ -143,10 +143,10 @@ pub struct LeanKillFeature {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct LeanKillReport {
+pub struct LeanParityReport {
     pub against: String,
     pub verdict: String,
-    pub feature_kill: bool,
+    pub feature_parity: bool,
     pub public_performance_claim_ready: bool,
     pub ponytail_commit: String,
     pub streetman_extra_features: Vec<String>,
@@ -525,76 +525,76 @@ pub fn ponytail_h2h_fixture(against: &str) -> LeanBenchResult {
         against: against.to_string(),
         status: "feature-win-fixture-pass".to_string(),
         claim: "Feature-wise Streetman Lean includes Ponytail's minimalism surface plus Streetman proof/compression/gate extras. This is a feature-surface win; live provider replay is still required before public performance claims.".to_string(),
-        feature_kill: true,
+        feature_parity: true,
         public_performance_claim_ready: false,
         cases,
         totals,
     }
 }
 
-pub fn ponytail_kill_report() -> LeanKillReport {
+pub fn ponytail_parity_report() -> LeanParityReport {
     let parity = vec![
-        kill_feature(
+        parity_feature(
             "minimal implementation ladder",
             "YAGNI -> stdlib -> native -> installed dependency -> one line -> minimum",
             "Streetman Lean instructions render the same ladder and bind it to proof/gate commands",
             &["streetman lean instructions", "skills/streetman-lean/SKILL.md"],
         ),
-        kill_feature(
+        parity_feature(
             "lite/full/ultra/off modes",
             "Prompt-level modes plus hook state",
             "LeanMode supports off/lite/full/ultra across CLI, hooks, OpenCode, and Pi",
             &["LeanMode", "hooks/streetman-mode-tracker.js", ".opencode/plugins/streetman-lean.mjs"],
         ),
-        kill_feature(
+        parity_feature(
             "persistent activation",
             "SessionStart and prompt hooks",
             "Streetman ships SessionStart/UserPromptSubmit hooks, statusline scripts, and host injection adapters",
             &["hooks/hooks.json", "hooks/streetman-activate.js", "hooks/streetman-statusline.sh"],
         ),
-        kill_feature(
+        parity_feature(
             "cross-agent distribution",
             "Claude, Codex, OpenCode, Gemini, Cursor, Windsurf, Cline, Copilot, Kiro, Pi",
             "Streetman ships those surfaces plus Zed and a VS Code extension scaffold",
             &[".codex-plugin/plugin.json", ".claude-plugin/plugin.json", "gemini-extension.json", ".zed/streetman-lean.md", "vscode-extension/package.json"],
         ),
-        kill_feature(
+        parity_feature(
             "overengineering review",
             "ponytail-review skill",
             "streetman lean review emits structured findings, dependency blocks, line savings, and JSON",
             &["streetman lean review --diff", "review_diff"],
         ),
-        kill_feature(
+        parity_feature(
             "repo-wide bloat audit",
             "ponytail-audit skill",
             "streetman lean audit scans repo files, dependencies, wrappers, abstractions, and dead config",
             &["streetman lean audit .", "audit_files"],
         ),
-        kill_feature(
+        parity_feature(
             "shortcut comments",
             "`ponytail:` ceiling comments",
             "`streetman:` ceiling comments are counted in reports/certificates and reduce extension-cost score",
             &["shortcut_comments", "LeanCertificate"],
         ),
-        kill_feature(
+        parity_feature(
             "runnable-check reflex",
             "Prompt rule for one small check",
             "Lean gate blocks non-trivial diffs without checks unless explicitly waived",
             &["streetman lean gate", "LeanGateConfig.require_runnable_check"],
         ),
-        kill_feature(
+        parity_feature(
             "safety boundaries",
             "Prompt guardrails",
             "Streetman keeps safety guardrails in instructions and records safety exceptions in reports/certificates",
             &["safety_exceptions", "redteam bench"],
         ),
-        kill_feature(
+        parity_feature(
             "benchmarks",
             "Promptfoo LOC/cost/time reports",
-            "Streetman ships Ponytail H2H fixture, totals, feature-kill flag, and benchmark-result schema",
+            "Streetman ships Ponytail H2H fixture, totals, feature-parity flag, and benchmark-result schema",
             &["streetman lean bench run --against ponytail", "benchmarks/lean/ponytail-h2h-tasks.json"],
         ),
-        kill_feature(
+        parity_feature(
             "claims discipline",
             "Benchmark caveats in docs",
             "Streetman separates feature-surface win from public performance claims in machine-readable output",
@@ -602,10 +602,10 @@ pub fn ponytail_kill_report() -> LeanKillReport {
         ),
     ];
 
-    LeanKillReport {
+    LeanParityReport {
         against: "DietrichGebert/ponytail".to_string(),
         verdict: "yes-feature-wise-streetman-includes-ponytail-and-more".to_string(),
-        feature_kill: parity.iter().all(|feature| feature.status == "streetman-wins"),
+        feature_parity: parity.iter().all(|feature| feature.status == "streetman-wins"),
         public_performance_claim_ready: false,
         ponytail_commit: "16319c7bc91b098975d2bfb2e351398ff8aae3e7".to_string(),
         streetman_extra_features: vec![
@@ -618,11 +618,11 @@ pub fn ponytail_kill_report() -> LeanKillReport {
             "MCP/proxy/gateway conformance surface".to_string(),
         ],
         parity,
-        caveat: "This is a feature-surface kill. Public performance claims still require a committed live provider replay.".to_string(),
+        caveat: "This is a feature-surface parity. Public performance claims still require a committed live provider replay.".to_string(),
     }
 }
 
-fn kill_feature(
+fn parity_feature(
     feature: &str,
     ponytail: &str,
     streetman: &str,

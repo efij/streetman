@@ -1,9 +1,9 @@
 # Streetman Benchmarks
 
-The current implementation ships an **absolute-win fixture bench**:
+The current implementation ships an **quality-gate fixture bench**:
 
 ```bash
-cargo run --bin streetman -- bench run --suite absolute-win --out benchmarks/results/fixture-latest.json
+cargo run --bin streetman -- bench run --suite quality-gate --out benchmarks/results/fixture-latest.json
 cargo run --bin streetman -- bench gate benchmarks/results/fixture-latest.json
 cargo run --bin streetman -- bench run --suite redteam
 ```

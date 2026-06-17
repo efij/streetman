@@ -16,9 +16,9 @@ pub use accuracy::{accuracy_check, AccuracyReport};
 pub use archive::{Archive, ArchiveRecord};
 pub use audit::{AuditReport, QualityScore};
 pub use bench::{
-    run_absolute_win_v2_bench, run_absolute_win_v3_bench, run_absolute_win_v4_bench,
-    run_all_lanes_bench, run_final_kf_bench, run_fixture_bench, run_redteam_bench,
-    run_token_greedy_bench, AbsoluteWinGate, BenchResult,
+    run_quality_gate_v2_bench, run_quality_gate_v3_bench, run_quality_gate_v4_bench,
+    run_all_lanes_bench, run_final_caps_bench, run_fixture_bench, run_redteam_bench,
+    run_token_greedy_bench, QualityGate, BenchResult,
 };
 pub use builtin::{builtin_oracle, BuiltinOracleResult};
 pub use compress::{
@@ -37,9 +37,9 @@ pub use enterprise::{
     EnterpriseReport,
 };
 pub use lean::{
-    audit_files, gate_diff, lean_instructions, ponytail_h2h_fixture, ponytail_kill_report,
+    audit_files, gate_diff, lean_instructions, ponytail_h2h_fixture, ponytail_parity_report,
     prove_diff, prove_diff_with_normal_twin, review_diff, LeanBenchResult, LeanCertificate,
-    LeanFinding, LeanGateConfig, LeanGateResult, LeanKillFeature, LeanKillReport, LeanMode,
+    LeanFinding, LeanGateConfig, LeanGateResult, LeanKillFeature, LeanParityReport, LeanMode,
     LeanReport,
 };
 pub use run::{build_run_receipt, RunArtifactReport, RunReceipt};

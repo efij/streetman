@@ -2,12 +2,12 @@
 
 ## 4.0.2 - 2026-06-17
 
-- Added a bundled offline Case-9 prose model asset and wired stacked prose to run
+- Added a bundled offline capability-9 prose model asset and wired stacked prose to run
   that local semantic rewrite stage before skeleton/token-greedy compression.
 - Verified the prose mode regression remains fixed: `lite`, `full`, and
   `ultra` produce distinct accuracy-100 outputs, with `full` back above the v3
   31.6% target on the regression sample.
-- Refreshed the `absolute-win-4` prose gate snapshot with Case-9 at 553 -> 83
+- Refreshed the `quality-gate-4` prose gate snapshot with capability-9 at 553 -> 83
   tokens, accuracy 100.
 - Bumped source install/plugin manifests to `4.0.2`.
 
@@ -18,22 +18,22 @@
   byte-identical punctuation stripping.
 - Added a regression test for prose mode differentiation with accuracy 100 and
   never-worse token counts.
-- Added Case-C2 versioned platform-builtin oracle:
+- Added capability-C2 versioned platform-builtin oracle:
   `streetman code builtin-oracle --language typescript --runtime node18 --task
   "make an http request" --json`.
-- Added `take5-case-c2-versioned-builtin-oracle` to the `absolute-win-4` gate so
-  TAKE 5 covers Case-C1/Case-C2/Case-C3 rather than only decision/behavior proof.
+- Added `take5-case-c2-versioned-builtin-oracle` to the `quality-gate-4` gate so
+  TAKE 5 covers capability-C1/capability-C2/capability-C3 rather than only decision/behavior proof.
 - Hardened the daemon smoke test against connection reset after response close.
 - Bumped source install/plugin manifests to `4.0.1`.
 
 ## 4.0.0 - 2026-06-17
 
-- Added `streetman bench run --suite absolute-win-4`, the all-Case executable gate
+- Added `streetman bench run --suite quality-gate-4`, the all-capability executable gate
   for the attached engineer plan.
 - Optimized the prose hot path by moving protected-token, phrase, numeric, log,
   HTML, and sensitive-data regexes to lazy statics, adding an embedded
   word/skeleton shortcut table, and caching token-greedy word decisions.
-- Added deterministic Case-9 stacked prose rewrite for long prose, gated by
+- Added deterministic capability-9 stacked prose rewrite for long prose, gated by
   accuracy and never-worse token checks.
 - Added JSON columnar delta factoring and tightened log run-length templates for
   the widened logs/JSON lane.
@@ -41,12 +41,12 @@
   minimization.
 - Added zeroized archive encryption buffers for the copied plaintext used during
   encrypted archive writes.
-- Added `docs/absolute-win-4.0.md` and bumped source install/plugin manifests to
+- Added `docs/quality-gate-4.0.md` and bumped source install/plugin manifests to
   `4.0.0`.
 
 ## 3.0.0 - 2026-06-17
 
-- Added `streetman bench run --suite absolute-win-3`, extending the v2
+- Added `streetman bench run --suite quality-gate-3`, extending the v2
   accuracy-gated/offline/reversible lane with enterprise product-surface gates.
 - Added `streetman enterprise` commands for config init/protect/push UX, RBAC,
   compliance mapping, SBOM, release attestation, deployment templates, local
@@ -56,13 +56,13 @@
 - Expanded security attestation claims for RBAC, supply-chain artifacts,
   air-gap posture, compliance mapping, local observability, and deployment
   templates.
-- Added `docs/absolute-win-3.0.md` and refreshed install docs to make v3 the
+- Added `docs/quality-gate-3.0.md` and refreshed install docs to make v3 the
   current release gate.
 - Bumped source install/plugin manifests to `3.0.0`.
 
 ## 2.0.0 - 2026-06-17
 
-- Added `streetman bench run --suite absolute-win-2`, an executable 17-dimension
+- Added `streetman bench run --suite quality-gate-2`, an executable 17-dimension
   gate for the accuracy-100, lossless/reversible, deterministic, offline win
   lane.
 - Added published-baseline gates for LLMLingua and LeanCTX. They are tracked as
@@ -72,7 +72,7 @@
   verify token correctness, code transport, Lean code-generation minimalism,
   reversibility, enterprise controls, and published-baseline claim boundaries in
   one command.
-- Added `docs/absolute-win-2.0.md` with the exact claim definition and honest
+- Added `docs/quality-gate-2.0.md` with the exact claim definition and honest
   caps.
 - Bumped source install/plugin manifests to `2.0.0`.
 
@@ -120,17 +120,17 @@
 
 ## 0.3.0 - 2026-06-16
 
-- Added `streetman bench run --suite final-case`, a real-token verification gate
+- Added `streetman bench run --suite capabilities`, a real-token verification gate
   for the implemented final-design pieces.
-- Added Case-C8 anchored edit-only code transport with token accounting.
-- Added Case-C9 unchanged-region elision for long code payloads.
-- Added Case-C7 code comment/docstring compression: logic lines remain intact,
+- Added capability-C8 anchored edit-only code transport with token accounting.
+- Added capability-C9 unchanged-region elision for long code payloads.
+- Added capability-C7 code comment/docstring compression: logic lines remain intact,
   comments are token-greedy compressed, and never-worse still gates output.
-- Added Case-3a log-line templatization and Case-3b JSON schema-row factoring,
+- Added capability-3a log-line templatization and capability-3b JSON schema-row factoring,
   both chosen only when real tokenizer counts beat the prior candidate.
 - Added `streetman code diff`, `streetman code elide`, and
   `streetman security attest`.
-- Added an offline security attestation for Case-S1/Case-S2/Case-S3/Case-S5 with an
+- Added an offline security attestation for capability-S1/capability-S2/capability-S3/capability-S5 with an
   honest Claude tokenizer cap. Learned rewriting, Claude-optimal offline
   counts, seccomp enforcement, SBOM signing, SIMD, and daemon warm mode remain
   roadmap-gated until they have executable acceptance tests.

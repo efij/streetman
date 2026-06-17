@@ -158,7 +158,7 @@ fn cli_lean_bench_fixture_smoke() {
     let stdout = String::from_utf8(output.stdout).expect("utf8");
     assert!(stdout.contains("streetman-lean-ponytail-h2h-fixture"));
     assert!(stdout.contains("feature-win-fixture-pass"));
-    assert!(stdout.contains("\"feature_kill\": true"));
+    assert!(stdout.contains("\"feature_parity\": true"));
     assert!(stdout.contains("\"public_performance_claim_ready\": false"));
 }
 
@@ -171,22 +171,22 @@ fn cli_token_greedy_bench_smoke() {
         .expect("run token greedy bench");
     assert!(output.status.success());
     let stdout = String::from_utf8(output.stdout).expect("utf8");
-    assert!(stdout.contains("token-greedy-case1-case2"));
+    assert!(stdout.contains("token-greedy-token-greedy-pair"));
     assert!(stdout.contains("legacy-char-greedy-regression-detected"));
     assert!(stdout.contains("\"gates_passed\": true"));
 }
 
 #[test]
-fn cli_final_kf_bench_smoke() {
+fn cli_final_caps_bench_smoke() {
     let output = Command::new(env!("CARGO_BIN_EXE_streetman"))
-        .args(["bench", "run", "--suite", "final-case"])
+        .args(["bench", "run", "--suite", "capabilities"])
         .stdout(Stdio::piped())
         .output()
-        .expect("run final case bench");
+        .expect("run final cap bench");
     assert!(output.status.success());
     let stdout = String::from_utf8(output.stdout).expect("utf8");
-    assert!(stdout.contains("final-case-0.3"));
-    assert!(stdout.contains("case-c8-anchored-diff-only-emission"));
+    assert!(stdout.contains("capabilities-0.3"));
+    assert!(stdout.contains("cap-c8-anchored-diff-only-emission"));
     assert!(stdout.contains("\"gates_passed\": true"));
 }
 
@@ -200,53 +200,53 @@ fn cli_all_lanes_bench_smoke() {
     assert!(output.status.success());
     let stdout = String::from_utf8(output.stdout).expect("utf8");
     assert!(stdout.contains("all-lanes-1.0"));
-    assert!(stdout.contains("case-2-ultra-accuracy-fallback"));
+    assert!(stdout.contains("cap-2-ultra-accuracy-fallback"));
     assert!(stdout.contains("\"gates_passed\": true"));
 }
 
 #[test]
-fn cli_absolute_win_v2_bench_smoke() {
+fn cli_quality_gate_v2_bench_smoke() {
     let output = Command::new(env!("CARGO_BIN_EXE_streetman"))
-        .args(["bench", "run", "--suite", "absolute-win-2"])
+        .args(["bench", "run", "--suite", "quality-gate-2"])
         .stdout(Stdio::piped())
         .output()
-        .expect("run absolute win v2 bench");
+        .expect("run quality gate v2 bench");
     assert!(output.status.success());
     let stdout = String::from_utf8(output.stdout).expect("utf8");
-    assert!(stdout.contains("absolute-win-2.0"));
+    assert!(stdout.contains("quality-gate-2.0"));
     assert!(stdout.contains("published-baseline-llmlingua-lossy-gate"));
     assert!(stdout.contains("published-baseline-leanctx-network-lossy-gate"));
     assert!(stdout.contains("\"gates_passed\": true"));
 }
 
 #[test]
-fn cli_absolute_win_v3_bench_smoke() {
+fn cli_quality_gate_v3_bench_smoke() {
     let output = Command::new(env!("CARGO_BIN_EXE_streetman"))
-        .args(["bench", "run", "--suite", "absolute-win-3"])
+        .args(["bench", "run", "--suite", "quality-gate-3"])
         .stdout(Stdio::piped())
         .output()
-        .expect("run absolute win v3 bench");
+        .expect("run quality gate v3 bench");
     assert!(output.status.success());
     let stdout = String::from_utf8(output.stdout).expect("utf8");
-    assert!(stdout.contains("absolute-win-3.0"));
+    assert!(stdout.contains("quality-gate-3.0"));
     assert!(stdout.contains("enterprise-release-attestation"));
-    assert!(stdout.contains("enterprise-attestation-Case-E13"));
+    assert!(stdout.contains("enterprise-attestation-capability-E13"));
     assert!(stdout.contains("\"gates_passed\": true"));
 }
 
 #[test]
-fn cli_absolute_win_v4_bench_smoke() {
+fn cli_quality_gate_v4_bench_smoke() {
     let output = Command::new(env!("CARGO_BIN_EXE_streetman"))
-        .args(["bench", "run", "--suite", "absolute-win-4"])
+        .args(["bench", "run", "--suite", "quality-gate-4"])
         .stdout(Stdio::piped())
         .output()
-        .expect("run absolute win v4 bench");
+        .expect("run quality gate v4 bench");
     assert!(output.status.success());
     let stdout = String::from_utf8(output.stdout).expect("utf8");
-    assert!(stdout.contains("absolute-win-4.0"));
-    assert!(stdout.contains("fix2-case9-stacked-prose-under-caveman-target"));
+    assert!(stdout.contains("quality-gate-4.0"));
+    assert!(stdout.contains("fix2-stacked-stacked-prose-under-caveman-target"));
     assert!(stdout.contains("widen4-json-columnar-delta-90pp"));
-    assert!(stdout.contains("take5-case-c3-behavior-equivalence-cli-gate"));
+    assert!(stdout.contains("take5-cap-c3-behavior-equivalence-cli-gate"));
     assert!(stdout.contains("\"gates_passed\": true"));
 }
 
@@ -379,7 +379,7 @@ fn cli_code_transport_and_security_smoke() {
     assert!(output.status.success());
     let stdout = String::from_utf8(output.stdout).expect("utf8");
     assert!(stdout.contains("offline-deterministic-zero-telemetry"));
-    assert!(stdout.contains("Case-CLAUDE-TOKENIZER"));
+    assert!(stdout.contains("capability-CLAUDE-TOKENIZER"));
 }
 
 #[test]
@@ -445,16 +445,16 @@ fn cli_accuracy_fixtures_include_token_greedy() {
     let stdout = String::from_utf8(output.stdout).expect("utf8");
     assert!(stdout.contains("\"token_greedy\""));
     assert!(stdout.contains("token-greedy-pass"));
-    assert!(stdout.contains("\"final_kf\""));
-    assert!(stdout.contains("final-case-pass"));
+    assert!(stdout.contains("\"final_caps\""));
+    assert!(stdout.contains("capabilities-pass"));
     assert!(stdout.contains("\"all_lanes\""));
     assert!(stdout.contains("all-lanes-pass"));
-    assert!(stdout.contains("\"absolute_win_v2\""));
-    assert!(stdout.contains("absolute-win-2-pass"));
-    assert!(stdout.contains("\"absolute_win_v3\""));
-    assert!(stdout.contains("absolute-win-3-pass"));
-    assert!(stdout.contains("\"absolute_win_v4\""));
-    assert!(stdout.contains("absolute-win-4-pass"));
+    assert!(stdout.contains("\"quality_gate_v2\""));
+    assert!(stdout.contains("quality-gate-2-pass"));
+    assert!(stdout.contains("\"quality_gate_v3\""));
+    assert!(stdout.contains("quality-gate-3-pass"));
+    assert!(stdout.contains("\"quality_gate_v4\""));
+    assert!(stdout.contains("quality-gate-4-pass"));
 }
 
 #[test]
@@ -676,15 +676,15 @@ fn cli_daemon_rejects_oversized_request() {
 }
 
 #[test]
-fn cli_lean_kill_reports_feature_win() {
+fn cli_lean_parity_reports_feature_win() {
     let output = Command::new(env!("CARGO_BIN_EXE_streetman"))
-        .args(["lean", "kill", "--against", "ponytail", "--json"])
+        .args(["lean", "parity", "--against", "ponytail", "--json"])
         .stdout(Stdio::piped())
         .output()
-        .expect("run lean kill");
+        .expect("run lean parity");
     assert!(output.status.success());
     let stdout = String::from_utf8(output.stdout).expect("utf8");
-    assert!(stdout.contains("\"feature_kill\": true"));
+    assert!(stdout.contains("\"feature_parity\": true"));
     assert!(stdout.contains("yes-feature-wise-streetman-includes-ponytail-and-more"));
     assert!(stdout.contains("Lean Certificate"));
 }
@@ -739,19 +739,19 @@ fn lean_static_kill_artifacts_are_valid() {
         .parent()
         .and_then(|p| p.parent())
         .expect("repo root");
-    let kill: serde_json::Value = serde_json::from_str(
-        &std::fs::read_to_string(repo.join("benchmarks/results/ponytail-feature-kill.json"))
-            .expect("read kill artifact"),
+    let parity: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string(repo.join("benchmarks/results/ponytail-feature-parity.json"))
+            .expect("read parity artifact"),
     )
-    .expect("parse kill artifact");
-    assert_eq!(kill["feature_kill"], true);
-    assert_eq!(kill["public_performance_claim_ready"], false);
+    .expect("parse parity artifact");
+    assert_eq!(parity["feature_parity"], true);
+    assert_eq!(parity["public_performance_claim_ready"], false);
 
     let h2h: serde_json::Value = serde_json::from_str(
         &std::fs::read_to_string(repo.join("benchmarks/results/ponytail-h2h.json"))
             .expect("read h2h artifact"),
     )
     .expect("parse h2h artifact");
-    assert_eq!(h2h["feature_kill"], true);
+    assert_eq!(h2h["feature_parity"], true);
     assert_eq!(h2h["status"], "feature-win-fixture-pass");
 }

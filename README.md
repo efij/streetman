@@ -16,7 +16,7 @@ numbers, and security terms survived intact.
 [![Platforms](https://img.shields.io/badge/Platforms-4_native-purple)](#-install)
 [![GitHub stars](https://img.shields.io/github/stars/efij/streetman?style=social)](https://github.com/efij/streetman)
 
-**[ Install ](#-install) · [ Benchmarks ](#-benchmarks) · [ Docs ](./docs/quickstart.md) · [ Feature Matrix ](./FEATURE_MATRIX.md) · [ Absolute Win ](./STREETMAN_ABSOLUTE_WIN.md) · [ Claims ](./CLAIMS.md)**
+**[ Install ](#-install) · [ Benchmarks ](#-benchmarks) · [ Docs ](./docs/quickstart.md) · [ Feature Matrix ](./FEATURE_MATRIX.md) · [ Claims ](./CLAIMS.md)**
 
 </div>
 
@@ -57,11 +57,11 @@ Primary 5.x safety and savings checks:
 ```bash
 streetman --version
 streetman bench run --suite token-greedy
-streetman bench run --suite absolute-win-4
+streetman bench run --suite quality-gate-4
 streetman enterprise release-attest --json
 ```
 
-The 5.1 source line keeps the v4 all-Case gate and adds token-greedy behavior that
+The 5.1 source line keeps the v4 all-capability gate and adds token-greedy behavior that
 uses real tokenizer counts before accepting a shorter output. The enterprise
 surface also emits local SBOM, release-attestation, compliance, RBAC,
 deployment, observability, and readiness artifacts.
@@ -75,7 +75,7 @@ Current committed snapshot: `competitor-live-2026-06-07`.
 - Streetman uses `30.3%` fewer output tokens than Caveman on that snapshot
 - Streetman session effective fixture: `70.0%`
 - Token Optimizer session detect-only effective savings: `0.0%`
-- Overall compare status: `absolute-win` for this local offline snapshot.
+- Overall compare status: `quality-gate` for this local offline snapshot.
 
 This is not a universal market claim. The Headroom JSON message-API lane is recorded
 as blocked by a local certificate failure, LLMLingua and LeanCTX are tracked as
@@ -152,22 +152,22 @@ This installs the latest pushed source version. Current source version: `5.5.0`.
 Run the fixture gate after install:
 
 ```bash
-streetman bench run --suite absolute-win
+streetman bench run --suite quality-gate
 streetman bench run --suite token-greedy
 streetman bench run --suite all-lanes
-streetman bench run --suite absolute-win-2
-streetman bench run --suite absolute-win-3
-streetman bench run --suite absolute-win-4
+streetman bench run --suite quality-gate-2
+streetman bench run --suite quality-gate-3
+streetman bench run --suite quality-gate-4
 ```
 
 ### Local development
 ```bash
 git clone https://github.com/efij/streetman
 cd streetman
-cargo run --bin streetman -- bench run --suite absolute-win
-cargo run --bin streetman -- bench run --suite absolute-win-2
-cargo run --bin streetman -- bench run --suite absolute-win-3
-cargo run --bin streetman -- bench run --suite absolute-win-4
+cargo run --bin streetman -- bench run --suite quality-gate
+cargo run --bin streetman -- bench run --suite quality-gate-2
+cargo run --bin streetman -- bench run --suite quality-gate-3
+cargo run --bin streetman -- bench run --suite quality-gate-4
 ```
 
 ### Package managers and editor plugins
@@ -201,7 +201,7 @@ echo "Your long verbose response here..." | streetman compress
 streetman compress README.md --mode full --domain docs --json
 
 # Run the fixture bench
-streetman bench run --suite absolute-win
+streetman bench run --suite quality-gate
 
 # Run the safety red-team bench
 streetman bench run --suite redteam
@@ -210,7 +210,7 @@ streetman bench run --suite redteam
 streetman bench run --suite token-greedy
 
 # Prove the implemented final-killer-feature gates
-streetman bench run --suite final-case
+streetman bench run --suite capabilities
 
 # Check local policy-as-code
 streetman policy check --mode ultra --domain prose README.md
@@ -245,7 +245,7 @@ streetman proxy --port 8787 --provider auto
 
 ## 📏 benchmarks
 
-**Current bench:** local token-greedy, absolute-win, all-lanes, enterprise, and
+**Current bench:** local token-greedy, quality-gate, all-lanes, enterprise, and
 pinned competitor-snapshot gates.
 
 **Planned full matrix:** 100 real-agent tasks × 4 models × baseline/competitor/streetman arms.
@@ -263,7 +263,7 @@ Fixture benches run locally. Competitor captures are committed to
 
 ```bash
 cd streetman
-streetman bench run --suite absolute-win --out benchmarks/results/fixture-latest.json
+streetman bench run --suite quality-gate --out benchmarks/results/fixture-latest.json
 streetman bench gate benchmarks/results/fixture-latest.json
 streetman bench capture-competitors --out benchmarks/results/competitor-live.json
 streetman bench compare --against headroom,token-optimizer,caveman
@@ -271,7 +271,7 @@ streetman bench compare --against headroom,token-optimizer,caveman
 
 ---
 
-## 🛠️ the 24 killer features
+## 🛠️ the 24 core features
 
 <details>
 <summary><strong>Core compression (11 features)</strong></summary>

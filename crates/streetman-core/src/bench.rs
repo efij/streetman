@@ -16,7 +16,7 @@ use std::{collections::HashSet, fs, path::Path, time::Instant};
 const DEFAULT_COMPETITOR_SNAPSHOT: &str = "benchmarks/results/competitor-live.json";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct AbsoluteWinGate {
+pub struct QualityGate {
     pub output_full_min_savings: f64,
     pub output_ultra_min_savings: f64,
     pub min_accuracy: u8,
@@ -24,7 +24,7 @@ pub struct AbsoluteWinGate {
     pub session_min_effective_savings: f64,
 }
 
-impl Default for AbsoluteWinGate {
+impl Default for QualityGate {
     fn default() -> Self {
         Self {
             output_full_min_savings: 85.0,
@@ -222,7 +222,7 @@ pub fn run_fixture_bench() -> BenchResult {
 
     let gates_passed = cases.iter().all(|case| case.passed);
     BenchResult {
-        suite: "absolute-win-fixtures".to_string(),
+        suite: "quality-gate-fixtures".to_string(),
         status: if gates_passed {
             "fixture-pass"
         } else {
@@ -232,7 +232,7 @@ pub fn run_fixture_bench() -> BenchResult {
         cases,
         gates_passed,
         claim:
-            "fixture pass is not an absolute-win claim; live competitor snapshots still required"
+            "fixture pass is not an quality-gate claim; live competitor snapshots still required"
                 .to_string(),
     }
 }
@@ -345,7 +345,7 @@ pub fn run_token_greedy_bench() -> BenchResult {
         "creating dependencies configuration for to before rendering object reference inline";
     let result = compress(trap, CompressionMode::Full, ContentDomain::Prose);
     cases.push(BenchCaseResult {
-        name: "case1-case2-token-greedy-never-worse".to_string(),
+        name: "token-greedy-pair-token-greedy-never-worse".to_string(),
         lane: "output".to_string(),
         before_tokens: result.original_tokens_estimate,
         after_tokens: result.compressed_tokens_estimate,
@@ -380,7 +380,7 @@ pub fn run_token_greedy_bench() -> BenchResult {
 
     let gates_passed = cases.iter().all(|case| case.passed);
     BenchResult {
-        suite: "token-greedy-case1-case2".to_string(),
+        suite: "token-greedy-token-greedy-pair".to_string(),
         status: if gates_passed {
             "token-greedy-pass"
         } else {
@@ -389,11 +389,11 @@ pub fn run_token_greedy_bench() -> BenchResult {
         .to_string(),
         cases,
         gates_passed,
-        claim: "Case-1/Case-2 pass means actual tiktoken counts drive transforms and compressed output is never worse than raw on committed trap fixtures.".to_string(),
+        claim: "capability-1/capability-2 pass means actual tiktoken counts drive transforms and compressed output is never worse than raw on committed trap fixtures.".to_string(),
     }
 }
 
-pub fn run_final_kf_bench() -> BenchResult {
+pub fn run_final_caps_bench() -> BenchResult {
     let mut cases = Vec::new();
 
     let code = r#"fn add(a: i32, b: i32) -> i32 {
@@ -402,7 +402,7 @@ pub fn run_final_kf_bench() -> BenchResult {
 }"#;
     let code_result = compress(code, CompressionMode::Full, ContentDomain::Code);
     cases.push(BenchCaseResult {
-        name: "case-c7-code-comment-compression".to_string(),
+        name: "cap-c7-code-comment-compression".to_string(),
         lane: "code".to_string(),
         before_tokens: code_result.original_tokens_estimate,
         after_tokens: code_result.compressed_tokens_estimate,
@@ -424,7 +424,7 @@ pub fn run_final_kf_bench() -> BenchResult {
     );
     let diff = anchored_diff(&before, &after);
     cases.push(BenchCaseResult {
-        name: "case-c8-anchored-diff-only-emission".to_string(),
+        name: "cap-c8-anchored-diff-only-emission".to_string(),
         lane: "code-transport".to_string(),
         before_tokens: diff.after_tokens,
         after_tokens: diff.transport_tokens,
@@ -435,7 +435,7 @@ pub fn run_final_kf_bench() -> BenchResult {
 
     let elision = elide_unchanged_regions(&after, 3);
     cases.push(BenchCaseResult {
-        name: "case-c9-unchanged-region-elision".to_string(),
+        name: "cap-c9-unchanged-region-elision".to_string(),
         lane: "code-transport".to_string(),
         before_tokens: elision.original_tokens,
         after_tokens: elision.elided_tokens,
@@ -455,7 +455,7 @@ pub fn run_final_kf_bench() -> BenchResult {
     .to_string();
     let json_result = compress(&json, CompressionMode::Full, ContentDomain::Json);
     cases.push(BenchCaseResult {
-        name: "case-3b-json-schema-factoring".to_string(),
+        name: "cap-3b-json-schema-factoring".to_string(),
         lane: "json".to_string(),
         before_tokens: json_result.original_tokens_estimate,
         after_tokens: json_result.compressed_tokens_estimate,
@@ -471,7 +471,7 @@ pub fn run_final_kf_bench() -> BenchResult {
         .join("\n");
     let log_result = compress(&logs, CompressionMode::Full, ContentDomain::Logs);
     cases.push(BenchCaseResult {
-        name: "case-3a-log-line-templatization".to_string(),
+        name: "cap-3a-log-line-templatization".to_string(),
         lane: "logs".to_string(),
         before_tokens: log_result.original_tokens_estimate,
         after_tokens: log_result.compressed_tokens_estimate,
@@ -483,7 +483,7 @@ pub fn run_final_kf_bench() -> BenchResult {
 
     let security = security_attestation();
     cases.push(BenchCaseResult {
-        name: "case-s1-s2-s3-s5-security-attestation".to_string(),
+        name: "cap-s1-s2-s3-s5-security-attestation".to_string(),
         lane: "security".to_string(),
         before_tokens: token_estimate("streetman security claims"),
         after_tokens: token_estimate(&security.signed_summary),
@@ -492,29 +492,29 @@ pub fn run_final_kf_bench() -> BenchResult {
         passed: security
             .claims
             .iter()
-            .any(|claim| claim.id == "Case-S1" && claim.status == "pass")
+            .any(|claim| claim.id == "capability-S1" && claim.status == "pass")
             && security
                 .claims
                 .iter()
-                .any(|claim| claim.id == "Case-S2" && claim.status == "pass")
+                .any(|claim| claim.id == "capability-S2" && claim.status == "pass")
             && security
                 .claims
                 .iter()
-                .any(|claim| claim.id == "Case-S3" && claim.status == "pass")
+                .any(|claim| claim.id == "capability-S3" && claim.status == "pass")
             && security
                 .claims
                 .iter()
-                .any(|claim| claim.id == "Case-S5" && claim.status == "pass")
+                .any(|claim| claim.id == "capability-S5" && claim.status == "pass")
             && security.signed_summary.len() == 64,
     });
 
     let gates_passed = cases.iter().all(|case| case.passed);
     BenchResult {
-        suite: "final-case-0.3".to_string(),
+        suite: "capabilities-0.3".to_string(),
         status: if gates_passed {
-            "final-case-pass"
+            "capabilities-pass"
         } else {
-            "final-case-fail"
+            "capabilities-fail"
         }
         .to_string(),
         cases,
@@ -529,7 +529,7 @@ pub fn run_all_lanes_bench() -> BenchResult {
     let ultra_bug = "React uses `useMemo` because an inline object reference changes on every render. Preserve userProfileToken and paymentProcessorConfig.";
     let result = compress(ultra_bug, CompressionMode::Ultra, ContentDomain::Prose);
     cases.push(BenchCaseResult {
-        name: "case-2-ultra-accuracy-fallback".to_string(),
+        name: "cap-2-ultra-accuracy-fallback".to_string(),
         lane: "token-correctness".to_string(),
         before_tokens: result.original_tokens_estimate,
         after_tokens: result.compressed_tokens_estimate,
@@ -544,7 +544,7 @@ pub fn run_all_lanes_bench() -> BenchResult {
     let caveman_rewrite = "React inline object creates new ref each render; use `useMemo`.";
     let stacked = compress(caveman_rewrite, CompressionMode::Full, ContentDomain::Prose);
     cases.push(BenchCaseResult {
-        name: "case-9-stacked-prose-on-external-rewrite".to_string(),
+        name: "cap-9-stacked-prose-on-external-rewrite".to_string(),
         lane: "prose".to_string(),
         before_tokens: token_estimate(caveman_rewrite),
         after_tokens: stacked.compressed_tokens_estimate,
@@ -567,7 +567,7 @@ pub fn run_all_lanes_bench() -> BenchResult {
         .join("\n");
     let log_result = compress(&logs, CompressionMode::Full, ContentDomain::Logs);
     cases.push(BenchCaseResult {
-        name: "case-3a-logs-hold-lead".to_string(),
+        name: "cap-3a-logs-hold-lead".to_string(),
         lane: "logs-json".to_string(),
         before_tokens: log_result.original_tokens_estimate,
         after_tokens: log_result.compressed_tokens_estimate,
@@ -587,7 +587,7 @@ pub fn run_all_lanes_bench() -> BenchResult {
     );
     let diff = anchored_diff(&before, &after);
     cases.push(BenchCaseResult {
-        name: "case-c8-code-transport".to_string(),
+        name: "cap-c8-code-transport".to_string(),
         lane: "code".to_string(),
         before_tokens: diff.after_tokens,
         after_tokens: diff.transport_tokens,
@@ -603,7 +603,7 @@ pub fn run_all_lanes_bench() -> BenchResult {
         12,
     );
     cases.push(BenchCaseResult {
-        name: "case-11-case-6-decode-and-fit".to_string(),
+        name: "cap-11-cap-6-decode-and-fit".to_string(),
         lane: "reversibility-context".to_string(),
         before_tokens: fit.original_tokens_estimate + token_estimate("k8s a11y config w/o archive"),
         after_tokens: fit.compressed_tokens_estimate + token_estimate(&decoded),
@@ -619,7 +619,7 @@ pub fn run_all_lanes_bench() -> BenchResult {
     let _ = compress(&perf_input, CompressionMode::Full, ContentDomain::Logs);
     let elapsed_ms = started.elapsed().as_millis() as usize;
     cases.push(BenchCaseResult {
-        name: "case-p-local-deterministic-performance-smoke".to_string(),
+        name: "cap-p-local-deterministic-performance-smoke".to_string(),
         lane: "performance".to_string(),
         before_tokens: token_estimate(&perf_input),
         after_tokens: elapsed_ms,
@@ -632,14 +632,14 @@ pub fn run_all_lanes_bench() -> BenchResult {
     let attestation = security_attestation();
     let claude = tokenizer_profile(Some("claude-3-5-sonnet"));
     cases.push(BenchCaseResult {
-        name: "case-e-enterprise-local-controls".to_string(),
+        name: "cap-e-enterprise-local-controls".to_string(),
         lane: "enterprise".to_string(),
         before_tokens: token_estimate("enterprise controls"),
         after_tokens: sensitive.len(),
         savings_percent: 0.0,
         accuracy_score: 100,
         passed: !sensitive.is_empty()
-            && attestation.claims.iter().any(|claim| claim.id == "Case-E7")
+            && attestation.claims.iter().any(|claim| claim.id == "capability-E7")
             && claude.family == "claude"
             && !claude.offline,
     });
@@ -659,7 +659,7 @@ pub fn run_all_lanes_bench() -> BenchResult {
     }
 }
 
-pub fn run_absolute_win_v2_bench() -> BenchResult {
+pub fn run_quality_gate_v2_bench() -> BenchResult {
     let mut cases = Vec::new();
 
     let ultra_bug = "React uses `useMemo` because an inline object reference changes on every render. Preserve userProfileToken and paymentProcessorConfig.";
@@ -847,11 +847,11 @@ pub fn run_absolute_win_v2_bench() -> BenchResult {
 
     let security = security_attestation();
     for (id, name) in [
-        ("Case-S1", "dim12-zero-egress-attestation"),
-        ("Case-S2", "dim13-encrypted-archive-attestation"),
-        ("Case-S3", "dim14-zero-telemetry-attestation"),
-        ("Case-S5", "dim15-offline-proof-attestation"),
-        ("Case-E7", "dim16-tamper-evident-audit-attestation"),
+        ("capability-S1", "dim12-zero-egress-attestation"),
+        ("capability-S2", "dim13-encrypted-archive-attestation"),
+        ("capability-S3", "dim14-zero-telemetry-attestation"),
+        ("capability-S5", "dim15-offline-proof-attestation"),
+        ("capability-E7", "dim16-tamper-evident-audit-attestation"),
     ] {
         cases.push(BenchCaseResult {
             name: name.to_string(),
@@ -906,7 +906,7 @@ pub fn run_absolute_win_v2_bench() -> BenchResult {
     }
     let elapsed_ms = started.elapsed().as_millis() as usize;
     cases.push(BenchCaseResult {
-        name: "case-p0-hot-tokenizer-latency-smoke".to_string(),
+        name: "cap-p0-hot-tokenizer-latency-smoke".to_string(),
         lane: "performance".to_string(),
         before_tokens: token_estimate(&perf_input),
         after_tokens: elapsed_ms,
@@ -917,22 +917,22 @@ pub fn run_absolute_win_v2_bench() -> BenchResult {
 
     let gates_passed = cases.iter().all(|case| case.passed);
     BenchResult {
-        suite: "absolute-win-2.0".to_string(),
+        suite: "quality-gate-2.0".to_string(),
         status: if gates_passed {
-            "absolute-win-2-pass"
+            "quality-gate-2-pass"
         } else {
-            "absolute-win-2-fail"
+            "quality-gate-2-fail"
         }
         .to_string(),
         cases,
         gates_passed,
-        claim: "v2.0 gates the absolute-win framing across 17 dimensions under the explicit lane definition: lossless, accuracy-100, reversible/proof-carrying, deterministic, offline. Published lossy/network baselines such as LLMLingua and LeanCTX are tracked as raw-ratio competitors but are disqualified from this gated lane unless they can satisfy the same local proof requirements.".to_string(),
+        claim: "v2.0 gates the quality-gate framing across 17 dimensions under the explicit lane definition: lossless, accuracy-100, reversible/proof-carrying, deterministic, offline. Published lossy/network baselines such as LLMLingua and LeanCTX are tracked as raw-ratio competitors but are disqualified from this gated lane unless they can satisfy the same local proof requirements.".to_string(),
     }
 }
 
-pub fn run_absolute_win_v3_bench() -> BenchResult {
-    let mut base = run_absolute_win_v2_bench();
-    base.suite = "absolute-win-3.0".to_string();
+pub fn run_quality_gate_v3_bench() -> BenchResult {
+    let mut base = run_quality_gate_v2_bench();
+    base.suite = "quality-gate-3.0".to_string();
 
     let enterprise = enterprise_report(".");
     for artifact in &enterprise.artifacts {
@@ -948,7 +948,7 @@ pub fn run_absolute_win_v3_bench() -> BenchResult {
     }
 
     let attestation = security_attestation();
-    for id in ["Case-E8", "Case-E9", "Case-E10", "Case-E11", "Case-E12", "Case-E13"] {
+    for id in ["capability-E8", "capability-E9", "capability-E10", "capability-E11", "capability-E12", "capability-E13"] {
         base.cases.push(BenchCaseResult {
             name: format!("enterprise-attestation-{id}"),
             lane: "enterprise-product-surface".to_string(),
@@ -965,23 +965,23 @@ pub fn run_absolute_win_v3_bench() -> BenchResult {
 
     base.gates_passed = base.cases.iter().all(|case| case.passed);
     base.status = if base.gates_passed {
-        "absolute-win-3-pass"
+        "quality-gate-3-pass"
     } else {
-        "absolute-win-3-fail"
+        "quality-gate-3-fail"
     }
     .to_string();
     base.claim = "v3.0 extends the v2 accuracy-gated/offline/reversible lane with executable enterprise product surfaces: config init/protect/push UX, RBAC, compliance map, SBOM, release attestation, deployment templates, local observability, and resident daemon smoke coverage. External Sigstore transparency-log inclusion, hosted SSO, and live lossy-baseline raw-ratio wins still require environment-specific runs.".to_string();
     base
 }
 
-pub fn run_absolute_win_v4_bench() -> BenchResult {
-    let mut base = run_absolute_win_v3_bench();
-    base.suite = "absolute-win-4.0".to_string();
+pub fn run_quality_gate_v4_bench() -> BenchResult {
+    let mut base = run_quality_gate_v3_bench();
+    base.suite = "quality-gate-4.0".to_string();
 
     let prose = prose_domination_fixture();
     let prose_result = compress(&prose, CompressionMode::Full, ContentDomain::Prose);
     base.cases.push(BenchCaseResult {
-        name: "fix2-case9-stacked-prose-under-caveman-target".to_string(),
+        name: "fix2-stacked-stacked-prose-under-caveman-target".to_string(),
         lane: "prose-ratio".to_string(),
         before_tokens: prose_result.original_tokens_estimate,
         after_tokens: prose_result.compressed_tokens_estimate,
@@ -1045,7 +1045,7 @@ pub fn run_absolute_win_v4_bench() -> BenchResult {
     });
 
     base.cases.push(BenchCaseResult {
-        name: "take5-case-c2-versioned-builtin-oracle".to_string(),
+        name: "take5-cap-c2-versioned-builtin-oracle".to_string(),
         lane: "code-gen".to_string(),
         before_tokens: token_estimate("typescript node18 http request axios dependency"),
         after_tokens: token_estimate("globalThis.fetch node>=18"),
@@ -1060,7 +1060,7 @@ pub fn run_absolute_win_v4_bench() -> BenchResult {
     });
 
     base.cases.push(BenchCaseResult {
-        name: "take5-case-c3-behavior-equivalence-cli-gate".to_string(),
+        name: "take5-cap-c3-behavior-equivalence-cli-gate".to_string(),
         lane: "code-gen".to_string(),
         before_tokens: token_estimate("streetman code behavior-gate --before --after"),
         after_tokens: token_estimate("identical status stdout stderr required"),
@@ -1071,12 +1071,12 @@ pub fn run_absolute_win_v4_bench() -> BenchResult {
 
     base.gates_passed = base.cases.iter().all(|case| case.passed);
     base.status = if base.gates_passed {
-        "absolute-win-4-pass"
+        "quality-gate-4-pass"
     } else {
-        "absolute-win-4-fail"
+        "quality-gate-4-fail"
     }
     .to_string();
-    base.claim = "v4.0 implements the attached all-Case design as local executable gates: optimized prose hot path, deterministic Case-9 stacked prose under the caveman token target at accuracy 100, accuracy-gated lossy competitor framing, widened JSON/log structural compression, behavior-equivalence CLI gate for code minimization, and signed enterprise/privacy surfaces.".to_string();
+    base.claim = "v4.0 implements the attached all-capability design as local executable gates: optimized prose hot path, deterministic capability-9 stacked prose under the caveman token target at accuracy 100, accuracy-gated lossy competitor framing, widened JSON/log structural compression, behavior-equivalence CLI gate for code minimization, and signed enterprise/privacy surfaces.".to_string();
     base
 }
 
@@ -1164,7 +1164,7 @@ pub fn compare_against(_names: &[String]) -> CompetitorComparison {
             passed: fixture.gates_passed,
         },
         GateCheck {
-            claim: "Output-prose absolute gate".to_string(),
+            claim: "Output-prose strict gate".to_string(),
             threshold: ">=85% full, >=90% ultra".to_string(),
             result: format!("full {output_full:.1}%, ultra {output_ultra:.1}%"),
             passed: output_full >= 85.0 && output_ultra >= 90.0,
@@ -1200,7 +1200,7 @@ pub fn compare_against(_names: &[String]) -> CompetitorComparison {
     let all_passed = claims_gate.iter().all(|gate| gate.passed);
     CompetitorComparison {
         status: if all_passed {
-            "absolute-win"
+            "quality-gate"
         } else {
             "not-yet-proven"
         }
@@ -1215,9 +1215,9 @@ pub fn compare_against(_names: &[String]) -> CompetitorComparison {
         metrics,
         claims_gate,
         verdict: if all_passed {
-            "Streetman may claim absolute win for this snapshot.".to_string()
+            "Streetman may claim quality gate for this snapshot.".to_string()
         } else {
-            "Streetman has a working scaffold and fixture wins, but must not claim absolute market win until live competitor snapshots pass.".to_string()
+            "Streetman has a working scaffold and fixture wins, but must not claim outright market win until live competitor snapshots pass.".to_string()
         },
     }
 }
@@ -1405,7 +1405,7 @@ mod tests {
     fn fixture_bench_is_structured() {
         let bench = run_fixture_bench();
         assert!(!bench.cases.is_empty());
-        assert!(bench.claim.contains("not an absolute-win claim"));
+        assert!(bench.claim.contains("not an quality-gate claim"));
     }
 
     #[test]
@@ -1415,8 +1415,8 @@ mod tests {
     }
 
     #[test]
-    fn absolute_win_v2_tracks_published_baselines_honestly() {
-        let bench = run_absolute_win_v2_bench();
+    fn quality_gate_v2_tracks_published_baselines_honestly() {
+        let bench = run_quality_gate_v2_bench();
         assert!(bench.gates_passed);
         assert!(bench.claim.contains("LLMLingua"));
         assert!(bench.claim.contains("LeanCTX"));

@@ -1,9 +1,9 @@
-# Absolute Win 3.0
+# Quality Gate 3.0
 
 Streetman 3.0 promotes the main verification command to:
 
 ```bash
-streetman bench run --suite absolute-win-3
+streetman bench run --suite quality-gate-3
 ```
 
 It includes the complete v2 accuracy-gated lane and adds executable enterprise

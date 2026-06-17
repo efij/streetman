@@ -1,15 +1,15 @@
-# Absolute Win 4.0
+# Quality Gate 4.0
 
-Streetman 4.0 is the all-Case gate from the attached engineer plan:
+Streetman 4.0 is the all-capability gate from the attached engineer plan:
 
 ```bash
-streetman bench run --suite absolute-win-4
+streetman bench run --suite quality-gate-4
 ```
 
 It includes v3 and adds executable cases for:
 
 - FIX 1: warm prose latency after regex/token decision caching
-- FIX 2: deterministic Case-9 stacked prose under the caveman token target at
+- FIX 2: deterministic capability-9 stacked prose under the caveman token target at
   accuracy 100
 - MOVE 3: lossy competitors tracked behind the same accuracy/lossless gate
 - WIDEN 4: JSON columnar delta and log run-length template cases

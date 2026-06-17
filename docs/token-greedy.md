@@ -4,9 +4,9 @@ Streetman now optimizes against real tokenizer tokens, not characters.
 
 Implemented fixes:
 
-- Case-1 Token-Greedy Encoder: word and phrase candidates are accepted only when
+- capability-1 Token-Greedy Encoder: word and phrase candidates are accepted only when
   they reduce actual `tiktoken` tokens for the active model profile.
-- Case-2 Never Worse Than Raw: after accuracy checks, the final candidate is
+- capability-2 Never Worse Than Raw: after accuracy checks, the final candidate is
   reverted if `tokens(compressed) > tokens(original)`.
 
 Default model profile is `gpt-4o` / `o200k_base`. Override with:

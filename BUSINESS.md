@@ -212,7 +212,7 @@ Every one kept OSS free at scale. None died from it. All built $100M+ ARR from t
 | **Model vendors absorb output compression natively** (Claude adds terse mode) | Already exist ("Answer concisely"). Streetman is 3x more aggressive + deterministic + rule-based (vendor can't match w/o shipping another skill). If vendors add native modes, our bench still proves we're 30%+ better. |
 | **Caveman or LLMLingua adds accuracy gate** | We own the bench-as-service tooling — if they add a gate, they're benching against us. Lead stays. |
 | **Gateway refuses to ship OSS adapter** | Ship as external plugin, publish config snippets + Docker image. Users self-install even if gateway won't promote. |
-| **Savings-Share Proxy latency** | Rust binary processes 100KB in <10ms on M1 = sub-ms compression overhead. 200-500ms LLM inference dominates. Latency overhead <0.5%. |
+| **Savings-Share Proxy latency** | Rust binary processes 100KB in <10ms on M1 = sub-ms compression overhead. 200-500ms LLM inference leads. Latency overhead <0.5%. |
 | **F500 legal blocks "we bill 20% of savings"** | Offer flat-rate tier as alternative ($10k–100k/mo based on token volume). Same value capture, simpler procurement. |
 | **OSS contributors fork commercial tier** | Commercial code stays closed; OSS surface is genuinely useful standalone (adoption proves it). Forking "the meter" requires rebuilding billing + compliance + SSO infra from scratch. Not a real threat. |
 
@@ -260,7 +260,7 @@ into optimized, context-enriched prompts using real repo/build/IDE state.
 
 | Dimension | Advantage |
 |---|---|
-| **Technical** | Unbounded skeleton engine, 24 killer features, 100% accuracy gate, Rust single-binary, 100x faster |
+| **Technical** | Unbounded skeleton engine, 24 core features, 100% accuracy gate, Rust single-binary, 100x faster |
 | **Validation** | 1,440-call bench matrix (144x rigor of competitors), bootstrap CI, committed snapshots, claims audit |
 | **Reach** | Day-1 on Claude Code + Cursor + Codex + VS Code + LiteLLM + Portkey + OpenRouter |
 | **Category** | Defines bench-as-service — sets the honesty bar competitors must match |

@@ -25,67 +25,67 @@ pub struct SecurityAttestation {
 pub fn security_attestation() -> SecurityAttestation {
     let claims = vec![
         SecurityClaim {
-            id: "Case-S1".to_string(),
+            id: "capability-S1".to_string(),
             status: "pass".to_string(),
             evidence: "compress/compile/proof/archive paths use local Rust code only; proxy forwarding is opt-in via STREETMAN_UPSTREAM_URL".to_string(),
         },
         SecurityClaim {
-            id: "Case-S2".to_string(),
+            id: "capability-S2".to_string(),
             status: "pass".to_string(),
             evidence: "Archive::store encrypts originals with ChaCha20-Poly1305 before writing archive/*.bin".to_string(),
         },
         SecurityClaim {
-            id: "Case-S3".to_string(),
+            id: "capability-S3".to_string(),
             status: "pass".to_string(),
             evidence: "StreetmanConfig::load_from forces telemetry=false and no telemetry client exists in core".to_string(),
         },
         SecurityClaim {
-            id: "Case-S5".to_string(),
+            id: "capability-S5".to_string(),
             status: "pass".to_string(),
             evidence: "compression certificates include input hash, output hash, tokenizer model, token guard, accuracy score, and deterministic signature".to_string(),
         },
         SecurityClaim {
-            id: "Case-E3".to_string(),
+            id: "capability-E3".to_string(),
             status: "pass".to_string(),
             evidence: "secret/PII classifier rejects sensitive originals before archive persistence; archive encryption copies accepted plaintext into a Zeroizing buffer".to_string(),
         },
         SecurityClaim {
-            id: "Case-E7".to_string(),
+            id: "capability-E7".to_string(),
             status: "pass".to_string(),
             evidence: "archive event log stores a hash chain with previous event hash and event hash".to_string(),
         },
         SecurityClaim {
-            id: "Case-E8".to_string(),
+            id: "capability-E8".to_string(),
             status: "pass".to_string(),
             evidence: "enterprise rbac emits tenant-isolated owner/security/developer/auditor roles as signed local policy artifact".to_string(),
         },
         SecurityClaim {
-            id: "Case-E9".to_string(),
+            id: "capability-E9".to_string(),
             status: "pass".to_string(),
             evidence: "enterprise sbom and release-attest commands emit deterministic signed SBOM/release artifacts; external Sigstore transparency inclusion remains CI-controlled".to_string(),
         },
         SecurityClaim {
-            id: "Case-E10".to_string(),
+            id: "capability-E10".to_string(),
             status: "pass".to_string(),
             evidence: "core compression, proof, policy, archive, and enterprise artifacts run without provider credentials or network access".to_string(),
         },
         SecurityClaim {
-            id: "Case-E11".to_string(),
+            id: "capability-E11".to_string(),
             status: "pass".to_string(),
             evidence: "enterprise compliance command maps SOC2/GDPR/HIPAA/ISO27001 controls to local evidence commands".to_string(),
         },
         SecurityClaim {
-            id: "Case-E12".to_string(),
+            id: "capability-E12".to_string(),
             status: "pass".to_string(),
             evidence: "enterprise observability command exposes numeric local metrics only and declares content_egress=false".to_string(),
         },
         SecurityClaim {
-            id: "Case-E13".to_string(),
+            id: "capability-E13".to_string(),
             status: "pass".to_string(),
             evidence: "enterprise deploy command emits Dockerfile, Helm values, and compose templates with zero telemetry and no egress policy".to_string(),
         },
         SecurityClaim {
-            id: "Case-CLAUDE-TOKENIZER".to_string(),
+            id: "capability-CLAUDE-TOKENIZER".to_string(),
             status: "honest-cap".to_string(),
             evidence: "Claude token counts are not claimed offline; GPT/Gemini-compatible public BPE paths are local, Claude online verification remains off by default".to_string(),
         },
@@ -144,11 +144,11 @@ mod tests {
     #[test]
     fn attestation_keeps_honest_claude_cap() {
         let report = security_attestation();
-        assert!(report.claims.iter().any(|claim| claim.id == "Case-S1"));
+        assert!(report.claims.iter().any(|claim| claim.id == "capability-S1"));
         assert!(report
             .claims
             .iter()
-            .any(|claim| claim.id == "Case-CLAUDE-TOKENIZER" && claim.status == "honest-cap"));
+            .any(|claim| claim.id == "capability-CLAUDE-TOKENIZER" && claim.status == "honest-cap"));
         assert_eq!(report.signed_summary.len(), 64);
     }
 

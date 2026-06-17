@@ -139,7 +139,7 @@ pub enum TransformId {
     P6Fusion,
     P7Elision,
     P8Respell,
-    Kf9Stacked,
+    StackedStacked,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -192,7 +192,7 @@ const PROSE_STRUCTURAL_WORD_CAP: usize = 2_000;
 struct ProseCtx {
     model: &'static str,
     protected: Vec<String>,
-    rewriter: Option<&'static Kf9ProseModel>,
+    rewriter: Option<&'static StackedProseModel>,
 }
 
 impl ProseCtx {
@@ -200,7 +200,7 @@ impl ProseCtx {
         Self {
             model: tokenizer_model(),
             protected: prose_protected_tokens(input),
-            rewriter: Some(case9_prose_model()),
+            rewriter: Some(stacked_prose_model()),
         }
     }
 }
@@ -759,7 +759,7 @@ fn prose_passes() -> &'static [ProsePass] {
         p5_symbol,
         p7_elision,
         p2_entropy,
-        pass_case9_stacked,
+        pass_stacked_stacked,
     ]
 }
 
@@ -783,10 +783,10 @@ fn compose_prose_passes(
     }
 }
 
-fn pass_case9_stacked(input: &str, mode: CompressionMode, ctx: &ProseCtx) -> Option<ProseCandidate> {
+fn pass_stacked_stacked(input: &str, mode: CompressionMode, ctx: &ProseCtx) -> Option<ProseCandidate> {
     let _ = ctx.rewriter?;
     stacked_prose_rewrite(input, mode)
-        .map(|text| ProseCandidate::from_text(text, Some(TransformId::Kf9Stacked), Vec::new()))
+        .map(|text| ProseCandidate::from_text(text, Some(TransformId::StackedStacked), Vec::new()))
 }
 
 fn p1_codebook(input: &str, _mode: CompressionMode, ctx: &ProseCtx) -> Option<ProseCandidate> {
@@ -1534,7 +1534,7 @@ fn stacked_prose_rewrite(input: &str, mode: CompressionMode) -> Option<String> {
     if input.split_whitespace().count() < 80 {
         return None;
     }
-    let model = case9_prose_model();
+    let model = stacked_prose_model();
     let protected = prose_protected_tokens(input);
     let mut scored = split_sentences(input)
         .into_iter()
@@ -1590,26 +1590,26 @@ fn stacked_prose_rewrite(input: &str, mode: CompressionMode) -> Option<String> {
 }
 
 #[derive(Debug)]
-struct Kf9ProseModel {
+struct StackedProseModel {
     #[cfg_attr(not(test), allow(dead_code))]
     id: &'static str,
-    scorers: Vec<Kf9Scorer>,
-    rewrites: Vec<Kf9Rewrite>,
+    scorers: Vec<StackedScorer>,
+    rewrites: Vec<StackedRewrite>,
 }
 
 #[derive(Debug)]
-struct Kf9Scorer {
+struct StackedScorer {
     pattern: &'static str,
     weight: usize,
 }
 
 #[derive(Debug)]
-struct Kf9Rewrite {
+struct StackedRewrite {
     from: &'static str,
     to: &'static str,
 }
 
-impl Kf9ProseModel {
+impl StackedProseModel {
     fn rewrite_sentence(&self, sentence: &str) -> String {
         let mut out = sentence.to_string();
         for rewrite in &self.rewrites {
@@ -1619,13 +1619,13 @@ impl Kf9ProseModel {
     }
 }
 
-fn case9_prose_model() -> &'static Kf9ProseModel {
-    static MODEL: OnceLock<Kf9ProseModel> = OnceLock::new();
+fn stacked_prose_model() -> &'static StackedProseModel {
+    static MODEL: OnceLock<StackedProseModel> = OnceLock::new();
     MODEL.get_or_init(|| {
-        let mut id = "streetman-case9-prose-model-v1";
+        let mut id = "streetman-stacked-prose-model-v1";
         let mut scorers = Vec::new();
         let mut rewrites = Vec::new();
-        for line in include_str!("../assets/case9_prose_model.tsv").lines() {
+        for line in include_str!("../assets/stacked_prose_model.tsv").lines() {
             let trimmed = line.trim();
             if trimmed.is_empty() {
                 continue;
@@ -1641,15 +1641,15 @@ fn case9_prose_model() -> &'static Kf9ProseModel {
             }
             let parts = trimmed.split('\t').collect::<Vec<_>>();
             match parts.as_slice() {
-                ["score", pattern, weight] => scorers.push(Kf9Scorer {
+                ["score", pattern, weight] => scorers.push(StackedScorer {
                     pattern,
                     weight: weight.parse().unwrap_or(1),
                 }),
-                ["rewrite", from, to] => rewrites.push(Kf9Rewrite { from, to }),
+                ["rewrite", from, to] => rewrites.push(StackedRewrite { from, to }),
                 _ => {}
             }
         }
-        Kf9ProseModel {
+        StackedProseModel {
             id,
             scorers,
             rewrites,
@@ -1835,7 +1835,7 @@ fn mode_phrase_rules(mode: CompressionMode) -> &'static [(&'static str, &'static
             ),
             (
                 "The implementation currently creates repeated dependencies and unnecessary abstraction layers around a simple request handler",
-                "impl repeats deps; kill wrappers",
+                "impl repeats deps; parity wrappers",
             ),
             ("should be checked before deployment", "check pre-deploy"),
             ("observability and accessibility", "o11y/a11y"),
@@ -2768,9 +2768,9 @@ mod tests {
     }
 
     #[test]
-    fn case9_uses_bundled_on_device_model_before_skeleton() {
-        let model = case9_prose_model();
-        assert_eq!(model.id, "streetman-case9-prose-model-v1");
+    fn stacked_uses_bundled_on_device_model_before_skeleton() {
+        let model = stacked_prose_model();
+        assert_eq!(model.id, "streetman-stacked-prose-model-v1");
         assert!(model
             .scorers
             .iter()

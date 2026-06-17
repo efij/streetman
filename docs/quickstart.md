@@ -20,13 +20,13 @@ EOF
 Run the fixture bench:
 
 ```bash
-cargo run --bin streetman -- bench run --suite absolute-win
+cargo run --bin streetman -- bench run --suite quality-gate
 cargo run --bin streetman -- bench run --suite token-greedy
-cargo run --bin streetman -- bench run --suite final-case
+cargo run --bin streetman -- bench run --suite capabilities
 cargo run --bin streetman -- bench run --suite all-lanes
-cargo run --bin streetman -- bench run --suite absolute-win-2
-cargo run --bin streetman -- bench run --suite absolute-win-3
-cargo run --bin streetman -- bench run --suite absolute-win-4
+cargo run --bin streetman -- bench run --suite quality-gate-2
+cargo run --bin streetman -- bench run --suite quality-gate-3
+cargo run --bin streetman -- bench run --suite quality-gate-4
 ```
 
 Use the code-transport and security surfaces:

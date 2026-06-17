@@ -2,10 +2,10 @@
 
 Streetman claims two bounded wins:
 
-- an **absolute win for the committed local offline snapshot**
+- an **quality gate for the committed local offline snapshot**
   `competitor-live-2026-06-07`
-- an **accuracy-gated/offline/reversible all-Case lane win** when
-  `streetman bench run --suite absolute-win-4` passes
+- an **accuracy-gated/offline/reversible all-capability lane win** when
+  `streetman bench run --suite quality-gate-4` passes
 
 This repository contains deterministic compression, local encrypted archive, retrieval,
 audit reports, fixture benchmarks, live competitor capture, and claim-gate commands.
@@ -19,9 +19,9 @@ benchmarks pass the same gates.
 | Output-prose compression engine exists | Implemented scaffold | `cargo test --workspace`; `streetman compress` |
 | Reversible archive/retrieve exists | Implemented scaffold | `Archive` unit test; `streetman retrieve <hash>` |
 | Zero telemetry by default | Implemented default | `.streetman.toml`, `StreetmanConfig::default()` |
-| Absolute win over Caveman | Snapshot pass | `benchmarks/results/competitor-live.json`; Streetman `65.2%` vs Caveman `50.0%` on Caveman's own output eval snapshot; Streetman uses `30.3%` fewer output tokens |
-| Absolute win over Headroom | Snapshot pass | `benchmarks/results/competitor-live.json`; Streetman `96.6%` vs Headroom `90.5%` on measured matching context workloads |
-| Absolute win over Token Optimizer | Snapshot pass | `benchmarks/results/competitor-live.json`; Streetman `70.0%` session fixture vs Token Optimizer `0.0%` detect-only effective savings |
+| Quality gate over Caveman | Snapshot pass | `benchmarks/results/competitor-live.json`; Streetman `65.2%` vs Caveman `50.0%` on Caveman's own output eval snapshot; Streetman uses `30.3%` fewer output tokens |
+| Quality gate over Headroom | Snapshot pass | `benchmarks/results/competitor-live.json`; Streetman `96.6%` vs Headroom `90.5%` on measured matching context workloads |
+| Quality gate over Token Optimizer | Snapshot pass | `benchmarks/results/competitor-live.json`; Streetman `70.0%` session fixture vs Token Optimizer `0.0%` detect-only effective savings |
 | `>=85%` output-prose fixture | Fixture-only pass | `benchmarks/results/fixture-latest.json` |
 | `100%` technical fidelity | Fixture-only scaffold | `streetman bench accuracy-fixtures` |
 | Policy-as-code adoption hook | Implemented local OSS | `streetman policy check --mode ultra --domain prose README.md` |
@@ -29,10 +29,10 @@ benchmarks pass the same gates.
 | Red-team compression safety | Implemented local OSS | `streetman bench run --suite redteam` |
 | Compression diff viewer | Implemented local OSS | `streetman diff <original> <compressed> --html --out <file>` |
 | Gateway conformance checks | Implemented local OSS | `streetman gateway conformance --provider all` |
-| Accuracy-gated published-baseline lane | Implemented local OSS | `streetman bench run --suite absolute-win-4`; LLMLingua/LeanCTX tracked as lossy/network raw-ratio baselines |
-| Stacked prose under caveman target | Implemented local OSS | `streetman bench run --suite absolute-win-4`; `fix2-case9-stacked-prose-under-caveman-target` |
-| Warm prose latency smoke | Implemented local OSS | `streetman bench run --suite absolute-win-4`; `fix1-warm-prose-latency-smoke` |
-| JSON/log structural widening | Implemented local OSS | `streetman bench run --suite absolute-win-4`; columnar JSON and run-length log template cases |
+| Accuracy-gated published-baseline lane | Implemented local OSS | `streetman bench run --suite quality-gate-4`; LLMLingua/LeanCTX tracked as lossy/network raw-ratio baselines |
+| Stacked prose under caveman target | Implemented local OSS | `streetman bench run --suite quality-gate-4`; `fix2-case9-stacked-prose-under-caveman-target` |
+| Warm prose latency smoke | Implemented local OSS | `streetman bench run --suite quality-gate-4`; `fix1-warm-prose-latency-smoke` |
+| JSON/log structural widening | Implemented local OSS | `streetman bench run --suite quality-gate-4`; columnar JSON and run-length log template cases |
 | Code behavior-equivalence gate | Implemented local OSS | `streetman code behavior-gate --before "cargo test" --after "cargo test" --json` |
 | Enterprise config/protect/push UX | Implemented local OSS | `streetman enterprise init-config --protect --push-registry .streetman-policy-registry` |
 | SBOM/release attestation | Implemented local OSS | `streetman enterprise sbom --json`; `streetman enterprise release-attest --json` |
