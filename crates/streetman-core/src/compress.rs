@@ -139,6 +139,7 @@ pub enum TransformId {
     P6Fusion,
     P7Elision,
     P8Respell,
+    N6Discourse,
     StackedStacked,
 }
 
@@ -744,9 +745,25 @@ fn choose_best_lossless_prose_candidate(
     let model = tokenizer_model();
     candidates
         .into_iter()
-        .filter(|candidate| accuracy_check(input, &candidate.text).score == 100)
+        .filter(|candidate| {
+            accuracy_check(input, &candidate.text).score == 100
+                && prose_preserves_numbers(input, &candidate.text)
+        })
         .min_by_key(|candidate| token_estimate_for_model(&candidate.text, model))
         .unwrap_or_else(|| ProseCandidate::raw(input))
+}
+
+/// Prose integrity guard: every bare integer in the input must still appear in the
+/// candidate, so no prose pass can silently drop a quantity ("takes 500 ms" ->
+/// "takes") while still scoring accuracy 100. Confined to prose on purpose —
+/// JSON/logs delta-encoding may legitimately rewrite numbers and is lossless by
+/// round-trip, so the global protected-token set deliberately omits bare integers.
+/// Canonicalization passes ("500 milliseconds" -> "500ms") keep the digits, so they
+/// still satisfy this check.
+fn prose_preserves_numbers(input: &str, candidate: &str) -> bool {
+    static NUM: OnceLock<regex::Regex> = OnceLock::new();
+    let re = NUM.get_or_init(|| regex::Regex::new(r"\b\d+\b").expect("number regex"));
+    re.find_iter(input).all(|m| candidate.contains(m.as_str()))
 }
 
 fn prose_passes() -> &'static [ProsePass] {
@@ -758,6 +775,7 @@ fn prose_passes() -> &'static [ProsePass] {
         p1_codebook,
         p5_symbol,
         p7_elision,
+        n6_discourse,
         p2_entropy,
         pass_stacked_stacked,
     ]
@@ -985,7 +1003,15 @@ fn p8_respell(input: &str, _mode: CompressionMode, ctx: &ProseCtx) -> Option<Pro
             ("cannot", "can't"),
             ("do not", "don't"),
             ("does not", "doesn't"),
+            ("did not", "didn't"),
             ("is not", "isn't"),
+            ("are not", "aren't"),
+            ("will not", "won't"),
+            ("it is", "it's"),
+            ("that is", "that's"),
+            ("you are", "you're"),
+            ("they are", "they're"),
+            ("we are", "we're"),
             ("organisation", "organization"),
             ("behaviour", "behavior"),
             ("colour", "color"),
@@ -1042,6 +1068,82 @@ fn is_entropy_droppable_word(word: &str, mode: CompressionMode) -> bool {
         || (matches!(mode, CompressionMode::Ultra) && is_ultra_droppable_word(word))
 }
 
+/// Case-N6 — Discourse-marker prune. Deletes ONLY meaning-free rhetorical padding
+/// phrases. It deliberately excludes every logical connective (however, therefore,
+/// but, so, thus, hence, because, although, moreover, instead) and every modal,
+/// because those carry contrast/causation/obligation meaning that the accuracy
+/// gate (which only checks protected tokens) would not catch. Removed phrases are
+/// archived (archive_required) so `retrieve` restores the exact original. Each
+/// phrase is matched on word boundaries, case-insensitively, surrounding spaces
+/// collapsed.
+fn n6_discourse(input: &str, _mode: CompressionMode, ctx: &ProseCtx) -> Option<ProseCandidate> {
+    // Pure filler only. No connectives, no modals, no quantifiers.
+    const PADDING: &[&str] = &[
+        "it is worth noting that",
+        "it's worth noting that",
+        "it is important to note that",
+        "as mentioned earlier",
+        "as mentioned above",
+        "as noted earlier",
+        "as noted above",
+        "as previously mentioned",
+        "needless to say",
+        "to be clear",
+        "at the end of the day",
+        "for what it is worth",
+        "for what it's worth",
+        "when all is said and done",
+        "as a matter of fact",
+    ];
+    let mut text = input.to_string();
+    let mut removed = Vec::new();
+    for phrase in PADDING {
+        if phrase_contains_protected(phrase, ctx) {
+            continue;
+        }
+        let collapsed = remove_phrase_case_insensitive(&text, phrase);
+        if collapsed != text {
+            text = collapsed;
+            removed.push((String::new(), (*phrase).to_string()));
+        }
+    }
+    if removed.is_empty() {
+        return None;
+    }
+    let text = collapse_spaces(&text);
+    prose_candidate_if_better(input, text, TransformId::N6Discourse, removed, true, ctx)
+}
+
+/// Remove every whole-word, case-insensitive occurrence of `phrase` (leaving a
+/// single separating space). Used only for the curated meaning-free padding set.
+fn remove_phrase_case_insensitive(input: &str, phrase: &str) -> String {
+    let hay = input.to_ascii_lowercase();
+    let needle = phrase.to_ascii_lowercase();
+    if !hay.contains(&needle) {
+        return input.to_string();
+    }
+    let mut out = String::with_capacity(input.len());
+    let mut cursor = 0usize;
+    // boundary-aware scan on the lowercase view, mapped back to original bytes
+    let mut i = 0usize;
+    while let Some(rel) = hay[i..].find(&needle) {
+        let start = i + rel;
+        let end = start + needle.len();
+        let before_ok = start == 0 || !hay.as_bytes()[start - 1].is_ascii_alphanumeric();
+        let after_ok = end == hay.len() || !hay.as_bytes()[end].is_ascii_alphanumeric();
+        if before_ok && after_ok {
+            out.push_str(&input[cursor..start]);
+            cursor = end;
+        }
+        i = end;
+    }
+    if cursor == 0 {
+        return input.to_string();
+    }
+    out.push_str(&input[cursor..]);
+    out
+}
+
 /// Ultra mode drops a broad set of low-information function words. The model
 /// reconstructs telegraphic English from context, and the exact originals are
 /// archived (P2 sets archive_required), so `retrieve` restores byte-for-byte.
@@ -1077,6 +1179,7 @@ fn prose_candidate_if_better(
     if text == input
         || token_estimate_for_model(&text, ctx.model) >= token_estimate_for_model(input, ctx.model)
         || accuracy_check(input, &text).score != 100
+        || !prose_preserves_numbers(input, &text)
     {
         return None;
     }
@@ -1936,7 +2039,10 @@ fn numeric_regexes() -> &'static [(regex::Regex, &'static str)] {
             (r"(?i)\b(\d+)\s+hours\b", "$1h"),
             (r"(?i)\b(\d+)\s+kilobytes\b", "$1KB"),
             (r"(?i)\b(\d+)\s+megabytes\b", "$1MB"),
+            (r"(?i)\b(\d+)\s+gigabytes\b", "$1GB"),
             (r"(?i)\b(\d+)\s+times\b", "$1x"),
+            (r"(?i)\b(\d+)\s+percent\b", "$1%"),
+            (r"(?i)\b(\d+)\s+per\s+cent\b", "$1%"),
         ]
         .into_iter()
         .map(|(pat, rep)| (regex::Regex::new(pat).expect("numeric regex"), rep))
@@ -2840,6 +2946,35 @@ mod tests {
             .iter()
             .any(|(_, token)| token.trim_matches('.').eq("currently")));
         assert!(token_estimate(&candidate.text) < token_estimate(&input));
+    }
+
+    #[test]
+    fn n6_drops_padding_but_preserves_connectives() {
+        let input = "It is worth noting that the cache is warm. However, the database is cold. \
+                     Therefore we retry, because the timeout is short.";
+        let ctx = ProseCtx::new(input);
+        let candidate = n6_discourse(input, CompressionMode::Full, &ctx).expect("n6 candidate");
+        // Padding removed.
+        assert!(!candidate.text.to_ascii_lowercase().contains("worth noting"));
+        // Integrity: every logical connective is preserved verbatim.
+        for connective in ["However", "Therefore", "because"] {
+            assert!(
+                candidate.text.contains(connective),
+                "connective {connective} must survive N6"
+            );
+        }
+        // Reversible + fewer tokens.
+        assert!(candidate.archive_required);
+        assert!(token_estimate(&candidate.text) < token_estimate(input));
+    }
+
+    #[test]
+    fn n6_never_touches_logical_markers() {
+        // A sentence made only of connectives/modals must be returned unchanged
+        // (N6 finds no padding to remove -> None).
+        let input = "However, therefore we should, because thus it may.";
+        let ctx = ProseCtx::new(input);
+        assert!(n6_discourse(input, CompressionMode::Full, &ctx).is_none());
     }
 
     #[test]
