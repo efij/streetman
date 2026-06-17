@@ -6,8 +6,8 @@ Install the current source-backed binary:
 cargo install --git https://github.com/efij/streetman streetman-cli --bin streetman --locked
 ```
 
-The Git install path tracks the latest pushed source release. Current source
-release: `4.0.2`.
+The Git install path tracks the latest pushed source version. Current source
+version: `5.1.0`.
 
 Build and run locally:
 

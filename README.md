@@ -1,10 +1,12 @@
 <div align="center">
 
-# 🏙️ streetman
+# streetman
 
-### **The compression platform for AI-augmented software engineering.**
+### **Cut AI token waste. Cut AI bills. Keep the facts.**
 
-*Targets LLM output cuts of 85%+ at 100% technical accuracy. Binary-gated, bench-first, multi-platform.*
+Streetman is a Rust CLI for LLM token compression: shorter AI output,
+more context left for the next step, and local proof that code, URLs, versions,
+numbers, and security terms survived intact.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](./LICENSE)
 [![Rust](https://img.shields.io/badge/Rust-1.85+-orange)](https://www.rust-lang.org/)
@@ -12,7 +14,7 @@
 [![Token Cut](https://img.shields.io/badge/Token_Cut-85%25+-ff69b4)](./CLAIMS.md)
 [![Bench](https://img.shields.io/badge/Bench-1440_calls-9cf)](./benchmarks/)
 [![Platforms](https://img.shields.io/badge/Platforms-4_native-purple)](#-install)
-[![GitHub stars](https://img.shields.io/github/stars/yourorg/streetman?style=social)](https://github.com/yourorg/streetman)
+[![GitHub stars](https://img.shields.io/github/stars/efij/streetman?style=social)](https://github.com/efij/streetman)
 
 **[ Install ](#-install) · [ Benchmarks ](#-benchmarks) · [ Docs ](./docs/quickstart.md) · [ Feature Matrix ](./FEATURE_MATRIX.md) · [ Absolute Win ](./STREETMAN_ABSOLUTE_WIN.md) · [ Claims ](./CLAIMS.md)**
 
@@ -22,9 +24,10 @@
 
 ## current status
 
-Streetman now has a working Rust implementation plus committed offline gates for
-two claim layers: the legacy local competitor snapshot and the v2 accuracy-gated
-absolute-win lane.
+Streetman `5.1.0` is a source-backed Rust implementation with committed local
+gates for the two claims that matter: fewer paid tokens and protected technical
+facts. It is built for people who use AI every day and do not want filler to eat
+their budget or their context window.
 
 - `streetman compress` — deterministic compression for prose, JSON, logs, search, diffs, code, docs, HTML.
 - `streetman compile` — ShortLang input/context compiler for prompts, logs, RAG chunks, history, and agent state.
@@ -45,22 +48,23 @@ absolute-win lane.
 - `streetman security attest` — offline zero-telemetry/encrypted-archive/proof-carrying security attestation.
 - `streetman gateway conformance` — local LiteLLM/OpenRouter/Portkey adapter contract checks.
 - `streetman lean` — implementation-minimalism layer: instructions, review, audit, gate, proof certificates, and Ponytail H2H fixtures.
-- Token-greedy compression — actual `tiktoken` counts drive transforms; final output is never worse than raw.
+- Token-greedy compression — actual tokenizer counts drive transforms; final output is never worse than raw on trap fixtures.
 
-Current source release: `4.0.2`.
+Current source version: `5.1.0`.
 
-Primary v4 all-Case gate:
+Primary 5.x safety and savings checks:
 
 ```bash
+streetman --version
+streetman bench run --suite token-greedy
 streetman bench run --suite absolute-win-4
+streetman enterprise release-attest --json
 ```
 
-That suite verifies the 17 local accuracy/offline/reversible dimensions,
-enterprise product surfaces, optimized prose hot path, deterministic stacked
-prose under the caveman target, widened JSON/log structural compression, and the
-code behavior-equivalence gate. Published lossy/network baselines such as
-LLMLingua and LeanCTX remain raw-ratio competitors, but they do not qualify for
-this lane unless they satisfy the same local proof requirements.
+The 5.1 source line keeps the v4 all-Case gate and adds token-greedy behavior that
+uses real tokenizer counts before accepting a shorter output. The enterprise
+surface also emits local SBOM, release-attestation, compliance, RBAC,
+deployment, observability, and readiness artifacts.
 
 Current committed snapshot: `competitor-live-2026-06-07`.
 
@@ -83,10 +87,10 @@ proxy work is still pending.
 ## why streetman
 
 ```
-│  TOKENS SAVED          █████████ 85%+ │
-│  TECHNICAL ACCURACY    █████████ 100% │
-│  SPEED INCREASE        █████████ ~5x  │
-│  VIBES                 █████████ GOAT │
+│  AI TOKENS SAVED       █████████ 85%+ │
+│  PROTECTED FACTS       █████████ 100% │
+│  CONTEXT LEFT          █████████ MORE │
+│  CLAIMS                █████████ GATED│
 ```
 
 These are gated snapshot claims. See [CLAIMS.md](./CLAIMS.md).
@@ -116,7 +120,7 @@ Not a fixed lexicon. Every word auto-reduces: `database→dtbs`, `configuration�
 ### 🎯 Technical accuracy — enforced before claims
 Deterministic protected-token extraction checks identifiers, URLs, versions, units, CVEs, and code-like tokens. Score <100 → auto-revert to original. LLM semantic judging is reserved for future live benches.
 
-### 🏎️ Rust single static binary — zero runtime deps
+### 🏎️ Rust CLI — fast local path
 - Cross-compiled: darwin-arm64/x64, linux-x64/arm64, windows-x64
 - 100KB input → compressed in <10ms on M1 (100x faster than Python alternatives)
 - Same binary serves Claude Code, Cursor, Codex CLI, VS Code
@@ -143,7 +147,7 @@ Nobody else in the category offers independent verification infra.
 cargo install --git https://github.com/efij/streetman streetman-cli --bin streetman --locked
 ```
 
-This installs the latest pushed source version. Current source release: `4.0.2`.
+This installs the latest pushed source version. Current source version: `5.1.0`.
 
 Run the fixture gate after install:
 
@@ -241,18 +245,20 @@ streetman proxy --port 8787 --provider auto
 
 ## 📏 benchmarks
 
-**Current bench:** local absolute-win fixtures plus pinned competitor snapshot.
+**Current bench:** local token-greedy, absolute-win, all-lanes, enterprise, and
+pinned competitor-snapshot gates.
 
 **Planned full matrix:** 100 real-agent tasks × 4 models × baseline/competitor/streetman arms.
 
-**Models:** Claude Opus 4.7, Claude Sonnet 4.6, Claude Haiku 4.5, GPT-5-Codex.
+**Models:** current frontier coding and agent models, recorded with exact
+provider/model/version metadata before any public claim is made.
 
-**Ship gate (must ALL pass to release):**
+**Public-claim gate (must ALL pass before headline claims move):**
 - Median output savings ≥85% vs normal
 - Median savings ≥30% over leading competitor
 - **Accuracy 100% across all 1,440 outputs, zero drops**
 
-Fixture bench runs on every PR. Competitor captures are committed to
+Fixture benches run locally. Competitor captures are committed to
 [`benchmarks/results/`](./benchmarks/) before README headline numbers become claims.
 
 ```bash
@@ -308,7 +314,7 @@ streetman bench compare --against headroom,token-optimizer,caveman
 <details>
 <summary><strong>Platform reach (1 feature)</strong></summary>
 
-21. **Multi-Platform Native** — Claude Code + Cursor + Codex + VS Code from day 1.
+21. **Multi-Platform Path** — verified CLI now; Claude Code, Cursor, Codex CLI, and VS Code packaging tracked separately before publication.
 
 </details>
 
@@ -336,7 +342,9 @@ Issues + PRs welcome. See [CONTRIBUTING.md](./CONTRIBUTING.md).
 - Add a domain profile → must include accuracy fixture
 - Report accuracy regression → share the prompt + model + expected vs actual
 
-**Bench gate:** every PR runs the full 1,440-call matrix in CI. Regression on savings or accuracy blocks merge.
+**Bench gate:** fixture regressions block local release work. The full 1,440-call
+provider matrix remains a planned live gate and must be committed before it
+becomes a public claim.
 
 ---
 
@@ -365,7 +373,9 @@ Core: [MIT](./LICENSE). Hosted + enterprise: commercial (see [BUSINESS.md](./BUS
 
 ## 📣 why we built this
 
-Because the current category leader cuts ~50% tokens unmeasured, silently drifts in long sessions, breaks in Cursor chat, and has no accuracy oracle. Streetman does the 85%+ job, binary-gated, bench-verified, multi-platform. The crown changes hands.
+Because AI users are paying for filler twice: once in money, then again in lost
+context. Streetman makes the response smaller, keeps the expensive facts intact,
+and gives teams a local benchmark instead of a vibe-based promise.
 
 ---
 
