@@ -12,6 +12,7 @@ use std::{
     fs,
     path::{Path, PathBuf},
 };
+use zeroize::Zeroizing;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ArchiveRecord {
@@ -71,9 +72,10 @@ impl Archive {
     ) -> anyhow::Result<ArchiveRecord> {
         let hash = blake3::hash(original.as_bytes()).to_hex().to_string();
         let nonce_bytes = nonce_for_hash(&hash);
+        let original_bytes = Zeroizing::new(original.as_bytes().to_vec());
         let encrypted = self
             .cipher
-            .encrypt(Nonce::from_slice(&nonce_bytes), original.as_bytes())
+            .encrypt(Nonce::from_slice(&nonce_bytes), original_bytes.as_slice())
             .map_err(|err| anyhow::anyhow!("archive encryption failed: {err}"))?;
         fs::write(
             self.root.join("archive").join(format!("{hash}.bin")),

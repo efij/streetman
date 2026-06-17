@@ -1,8 +1,11 @@
 use crate::accuracy::{accuracy_check, protected_tokens, AccuracyReport};
 use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, sync::OnceLock};
+use std::{
+    collections::HashMap,
+    sync::{Mutex, OnceLock},
+};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum CompressionMode {
     Lite,
@@ -537,6 +540,11 @@ fn compress_prose(input: &str, mode: CompressionMode) -> String {
     if let Some(distilled) = distill_known_explanation(input, mode) {
         return distilled;
     }
+    if matches!(mode, CompressionMode::Full | CompressionMode::Ultra) {
+        if let Some(stacked) = stacked_prose_rewrite(input, mode) {
+            return stacked;
+        }
+    }
     if let Some(distilled) = distill_long_technical_prose(input, mode) {
         return distilled;
     }
@@ -608,12 +616,16 @@ fn should_preserve_word(word: &str) -> bool {
     if word.chars().any(|c| c.is_uppercase()) {
         return true;
     }
-    protected_tokens(word).len() > 1
+    false
 }
 
 fn token_greedy_word(word: &str, mode: CompressionMode) -> String {
-    let mut candidates = vec![word.to_string()];
+    let key = (word.to_string(), mode);
+    if let Some(cached) = word_cache().lock().expect("word cache").get(&key).cloned() {
+        return cached;
+    }
     let lower = word.to_ascii_lowercase();
+    let mut candidates = vec![word.to_string()];
     if lower != word {
         candidates.push(lower.clone());
     }
@@ -623,11 +635,61 @@ fn token_greedy_word(word: &str, mode: CompressionMode) -> String {
     if let Some(short) = shortcut(&lower) {
         candidates.push(short.to_string());
     }
-    candidates.push(raw_skeletonize(&lower, mode));
+    candidates
+        .push(precomputed_skeleton(&lower, mode).unwrap_or_else(|| raw_skeletonize(&lower, mode)));
     if matches!(mode, CompressionMode::Ultra) {
         candidates.push(lower.replace("tion", "tn").replace("ing", "ng"));
     }
-    choose_min_token_variant(word, candidates)
+    let chosen = choose_min_token_variant(word, candidates);
+    word_cache()
+        .lock()
+        .expect("word cache")
+        .insert(key, chosen.clone());
+    chosen
+}
+
+fn word_cache() -> &'static Mutex<HashMap<(String, CompressionMode), String>> {
+    static CACHE: OnceLock<Mutex<HashMap<(String, CompressionMode), String>>> = OnceLock::new();
+    CACHE.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+fn precomputed_skeleton(word: &str, mode: CompressionMode) -> Option<String> {
+    let full = match word {
+        "accessibility" => "a11y",
+        "approximately" => "approx",
+        "authentication" => "auth",
+        "authorization" => "authz",
+        "availability" => "avail",
+        "background" => "bg",
+        "because" => "cuz",
+        "before" => "b4",
+        "configuration" => "config",
+        "database" => "db",
+        "dependency" | "dependencies" => "deps",
+        "deployment" => "deploy",
+        "development" => "dev",
+        "environment" => "env",
+        "implementation" => "impl",
+        "internationalization" => "i18n",
+        "javascript" => "js",
+        "kubernetes" => "k8s",
+        "localization" => "l10n",
+        "observability" => "o11y",
+        "performance" => "perf",
+        "production" => "prod",
+        "reference" => "ref",
+        "request" => "req",
+        "response" => "resp",
+        "typescript" => "ts",
+        "without" => "w/o",
+        "worker" => "wrk",
+        _ => return None,
+    };
+    if matches!(mode, CompressionMode::Lite) && word.len() < 8 {
+        None
+    } else {
+        Some(full.to_string())
+    }
 }
 
 fn choose_min_token_variant(original: &str, candidates: Vec<String>) -> String {
@@ -770,6 +832,77 @@ fn distill_long_technical_prose(input: &str, mode: CompressionMode) -> Option<St
     Some(compact)
 }
 
+fn stacked_prose_rewrite(input: &str, mode: CompressionMode) -> Option<String> {
+    if input.split_whitespace().count() < 80 {
+        return None;
+    }
+    let protected = prose_protected_tokens(input);
+    let mut scored = split_sentences(input)
+        .into_iter()
+        .map(|sentence| {
+            let lower = sentence.to_ascii_lowercase();
+            let score = [
+                "fix", "use ", "wrap", "avoid", "cause", "because", "must", "should", "risk",
+                "key", "rule", "error", "failed", "token", "latency", "cache", "schema", "log",
+                "test", "proof",
+            ]
+            .iter()
+            .filter(|needle| lower.contains(**needle))
+            .count();
+            (score, sentence)
+        })
+        .collect::<Vec<_>>();
+    scored.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| a.1.len().cmp(&b.1.len())));
+    let take = match mode {
+        CompressionMode::Ultra => 5,
+        CompressionMode::Full => 7,
+        _ => 9,
+    };
+    let lines = scored
+        .into_iter()
+        .filter(|(score, sentence)| *score > 0 || sentence.split_whitespace().count() > 8)
+        .take(take)
+        .map(|(_, sentence)| {
+            let sentence = strip_filler_clauses(&sentence);
+            format!("• {}", compress_prose_fragment(&sentence, mode))
+        })
+        .collect::<Vec<_>>();
+    if lines.len() < 3 {
+        return None;
+    }
+    let mut candidate = lines.join("\n");
+    let missing = protected
+        .iter()
+        .filter(|token| !candidate.contains(token.as_str()))
+        .cloned()
+        .collect::<Vec<_>>();
+    if !missing.is_empty() {
+        candidate.push_str("\nrefs: ");
+        candidate.push_str(&missing.join(" "));
+    }
+    if token_estimate(&candidate) < token_estimate(input) {
+        Some(candidate)
+    } else {
+        None
+    }
+}
+
+fn strip_filler_clauses(input: &str) -> String {
+    let mut out = input.to_string();
+    for filler in [
+        "it is important to note that ",
+        "you should be aware that ",
+        "in many cases, ",
+        "as a general rule, ",
+        "the reason is that ",
+        "this means that ",
+        "in order to ",
+    ] {
+        out = replace_case_insensitive_cached(&out, filler, "");
+    }
+    out
+}
+
 fn split_sentences(input: &str) -> Vec<String> {
     let mut out = Vec::new();
     let mut current = String::new();
@@ -905,15 +1038,52 @@ fn phrase_rules() -> &'static [(&'static str, &'static str)] {
     ]
 }
 
-fn replace_case_insensitive(input: &str, from: &str, to: &str) -> String {
-    let pattern = regex::RegexBuilder::new(&regex::escape(from))
-        .case_insensitive(true)
-        .build()
-        .expect("literal regex");
-    pattern.replace_all(input, to).to_string()
+fn replace_case_insensitive(input: &str, from: &'static str, to: &str) -> String {
+    replace_case_insensitive_cached(input, from, to)
 }
 
-fn token_greedy_replace_case_insensitive(input: &str, from: &str, to: &str) -> String {
+fn replace_case_insensitive_cached(input: &str, from: &'static str, to: &str) -> String {
+    let re = phrase_regexes()
+        .get(from)
+        .expect("phrase regex must be precompiled");
+    re.replace_all(input, to).to_string()
+}
+
+fn phrase_regexes() -> &'static HashMap<&'static str, regex::Regex> {
+    static RES: OnceLock<HashMap<&'static str, regex::Regex>> = OnceLock::new();
+    RES.get_or_init(|| {
+        let mut map = HashMap::new();
+        for (from, _) in phrase_rules() {
+            map.insert(
+                *from,
+                regex::RegexBuilder::new(&regex::escape(from))
+                    .case_insensitive(true)
+                    .build()
+                    .expect("literal regex"),
+            );
+        }
+        for filler in [
+            "it is important to note that ",
+            "you should be aware that ",
+            "in many cases, ",
+            "as a general rule, ",
+            "the reason is that ",
+            "this means that ",
+            "in order to ",
+        ] {
+            map.insert(
+                filler,
+                regex::RegexBuilder::new(&regex::escape(filler))
+                    .case_insensitive(true)
+                    .build()
+                    .expect("filler regex"),
+            );
+        }
+        map
+    })
+}
+
+fn token_greedy_replace_case_insensitive(input: &str, from: &'static str, to: &str) -> String {
     if token_estimate(to) >= token_estimate(from) {
         return input.to_string();
     }
@@ -928,21 +1098,29 @@ fn token_greedy_replace_literal(input: &str, from: &str, to: &str) -> String {
 }
 
 fn crunch_numerics(input: &str) -> String {
-    let rules = [
-        (r"(?i)\b(\d+)\s+milliseconds\b", "$1ms"),
-        (r"(?i)\b(\d+)\s+seconds\b", "$1s"),
-        (r"(?i)\b(\d+)\s+minutes\b", "$1min"),
-        (r"(?i)\b(\d+)\s+hours\b", "$1h"),
-        (r"(?i)\b(\d+)\s+kilobytes\b", "$1KB"),
-        (r"(?i)\b(\d+)\s+megabytes\b", "$1MB"),
-        (r"(?i)\b(\d+)\s+times\b", "$1x"),
-    ];
     let mut out = input.to_string();
-    for (pat, rep) in rules {
-        let re = regex::Regex::new(pat).expect("numeric regex");
-        out = re.replace_all(&out, rep).to_string();
+    for (re, rep) in numeric_regexes() {
+        out = re.replace_all(&out, *rep).to_string();
     }
     out
+}
+
+fn numeric_regexes() -> &'static [(regex::Regex, &'static str)] {
+    static RES: OnceLock<Vec<(regex::Regex, &'static str)>> = OnceLock::new();
+    RES.get_or_init(|| {
+        [
+            (r"(?i)\b(\d+)\s+milliseconds\b", "$1ms"),
+            (r"(?i)\b(\d+)\s+seconds\b", "$1s"),
+            (r"(?i)\b(\d+)\s+minutes\b", "$1min"),
+            (r"(?i)\b(\d+)\s+hours\b", "$1h"),
+            (r"(?i)\b(\d+)\s+kilobytes\b", "$1KB"),
+            (r"(?i)\b(\d+)\s+megabytes\b", "$1MB"),
+            (r"(?i)\b(\d+)\s+times\b", "$1x"),
+        ]
+        .into_iter()
+        .map(|(pat, rep)| (regex::Regex::new(pat).expect("numeric regex"), rep))
+        .collect()
+    })
 }
 
 fn compress_json(input: &str) -> String {
@@ -950,6 +1128,11 @@ fn compress_json(input: &str) -> String {
         return compress_prose(input, CompressionMode::Full);
     };
     let summary = summarize_json_value(&value, 0);
+    if let Some(columnar) = json_columnar_rows(&value) {
+        if token_estimate(&columnar) < token_estimate(&summary) {
+            return columnar;
+        }
+    }
     if let Some(factored) = json_schema_rows(&value) {
         if token_estimate(&factored) < token_estimate(&summary) {
             return factored;
@@ -997,6 +1180,56 @@ fn json_schema_rows(value: &serde_json::Value) -> Option<String> {
     } else {
         None
     }
+}
+
+fn json_columnar_rows(value: &serde_json::Value) -> Option<String> {
+    let items = value.as_array()?;
+    if items.len() < 8 {
+        return None;
+    }
+    let first = items.first()?.as_object()?;
+    let mut keys = first.keys().cloned().collect::<Vec<_>>();
+    keys.sort();
+    if keys.is_empty() {
+        return None;
+    }
+    let mut columns: serde_json::Map<String, serde_json::Value> = serde_json::Map::new();
+    for key in &keys {
+        let mut values = Vec::with_capacity(items.len());
+        for item in items {
+            let object = item.as_object()?;
+            let mut item_keys = object.keys().cloned().collect::<Vec<_>>();
+            item_keys.sort();
+            if item_keys != keys {
+                return None;
+            }
+            values.push(object.get(key).cloned().unwrap_or(serde_json::Value::Null));
+        }
+        columns.insert(key.clone(), encode_column(values));
+    }
+    let factored = serde_json::json!({
+        "streetman": "json-columnar-delta-v1",
+        "n": items.len(),
+        "c": columns
+    })
+    .to_string();
+    if token_estimate(&factored) < token_estimate(&value.to_string()) {
+        Some(factored)
+    } else {
+        None
+    }
+}
+
+fn encode_column(values: Vec<serde_json::Value>) -> serde_json::Value {
+    if values.windows(2).all(|pair| {
+        matches!((&pair[0], &pair[1]), (serde_json::Value::Number(a), serde_json::Value::Number(b)) if b.as_i64() == a.as_i64().map(|n| n + 1))
+    }) {
+        return serde_json::json!({"start": values[0], "delta": 1});
+    }
+    if values.iter().all(|value| value == &values[0]) {
+        return serde_json::json!({"const": values[0]});
+    }
+    serde_json::Value::Array(values)
 }
 
 fn summarize_json_value(value: &serde_json::Value, depth: usize) -> String {
@@ -1109,7 +1342,9 @@ fn templatize_logs(input: &str) -> Option<String> {
     )];
     for (idx, (template, (count, sample))) in repeated.into_iter().take(12).enumerate() {
         out.push(format!("t{} x{}: {}", idx + 1, count, template));
-        out.push(format!("  sample: {sample}"));
+        if interesting.iter().any(|line| line == &sample) {
+            out.push(format!("  sample: {sample}"));
+        }
     }
     interesting.sort();
     interesting.dedup();
@@ -1127,23 +1362,31 @@ fn templatize_logs(input: &str) -> Option<String> {
 
 fn log_template(line: &str) -> String {
     let mut out = line.to_string();
-    let rules = [
-        (
-            r"\b\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z\b",
-            "{ts}",
-        ),
-        (r"\b[0-9a-fA-F]{8,}\b", "{hex}"),
-        (
-            r"\b(req|request|trace|span|user|job|worker)[_-]?[A-Za-z0-9-]+\b",
-            "{$1}",
-        ),
-        (r"\b\d+\b", "{n}"),
-    ];
-    for (pattern, replacement) in rules {
-        let re = regex::Regex::new(pattern).expect("log template regex");
-        out = re.replace_all(&out, replacement).to_string();
+    for (re, replacement) in log_template_regexes() {
+        out = re.replace_all(&out, *replacement).to_string();
     }
     out
+}
+
+fn log_template_regexes() -> &'static [(regex::Regex, &'static str)] {
+    static RES: OnceLock<Vec<(regex::Regex, &'static str)>> = OnceLock::new();
+    RES.get_or_init(|| {
+        [
+            (
+                r"\b\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z\b",
+                "{ts}",
+            ),
+            (r"\b[0-9a-fA-F]{8,}\b", "{hex}"),
+            (
+                r"\b(req|request|trace|span|user|job|worker)[_-]?[A-Za-z0-9-]+\b",
+                "{$1}",
+            ),
+            (r"\b\d+\b", "{n}"),
+        ]
+        .into_iter()
+        .map(|(pat, rep)| (regex::Regex::new(pat).expect("log template regex"), rep))
+        .collect()
+    })
 }
 
 fn compress_search(input: &str) -> String {
@@ -1517,10 +1760,26 @@ fn filter_code_logic_lines(input: &str) -> String {
 }
 
 fn compress_html(input: &str) -> String {
-    let tag_re = regex::Regex::new(r"(?is)<(script|style).*?</\1>").expect("html regex");
-    let no_scripts = tag_re.replace_all(input, "");
-    let tag_re = regex::Regex::new(r"(?is)<[^>]+>").expect("html strip regex");
-    collapse_spaces(&tag_re.replace_all(&no_scripts, " "))
+    let mut out = input.to_string();
+    for re in html_script_regexes() {
+        out = re.replace_all(&out, "").to_string();
+    }
+    collapse_spaces(&html_tag_regex().replace_all(&out, " "))
+}
+
+fn html_script_regexes() -> &'static [regex::Regex] {
+    static RES: OnceLock<Vec<regex::Regex>> = OnceLock::new();
+    RES.get_or_init(|| {
+        [r"(?is)<script.*?</script>", r"(?is)<style.*?</style>"]
+            .into_iter()
+            .map(|pat| regex::Regex::new(pat).expect("html script regex"))
+            .collect()
+    })
+}
+
+fn html_tag_regex() -> &'static regex::Regex {
+    static RE: OnceLock<regex::Regex> = OnceLock::new();
+    RE.get_or_init(|| regex::Regex::new(r"(?is)<[^>]+>").expect("html strip regex"))
 }
 
 fn collapse_spaces(input: &str) -> String {

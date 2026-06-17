@@ -13,8 +13,9 @@ use streetman_core::{
     audit::audit_text,
     audit_files,
     bench::{
-        compare_against, run_absolute_win_v2_bench, run_absolute_win_v3_bench, run_all_lanes_bench,
-        run_final_kf_bench, run_fixture_bench, run_redteam_bench, run_token_greedy_bench,
+        compare_against, run_absolute_win_v2_bench, run_absolute_win_v3_bench,
+        run_absolute_win_v4_bench, run_all_lanes_bench, run_final_kf_bench, run_fixture_bench,
+        run_redteam_bench, run_token_greedy_bench,
     },
     build_run_receipt, check_policy, classify_sensitive, compile_shortlang, compliance_map,
     compress, decode_archive_free, default_protected_config_path, deployment_bundle,
@@ -244,6 +245,14 @@ enum CodeCommand {
         file: PathBuf,
         #[arg(long, default_value_t = 3)]
         keep: usize,
+        #[arg(long)]
+        json: bool,
+    },
+    BehaviorGate {
+        #[arg(long)]
+        before: String,
+        #[arg(long)]
+        after: String,
         #[arg(long)]
         json: bool,
     },
@@ -1152,6 +1161,7 @@ fn run_bench(command: BenchCommand) -> anyhow::Result<()> {
                 "absolute-win-3" | "absolute-win-3.0" | "entire-plan" => {
                     run_absolute_win_v3_bench()
                 }
+                "absolute-win-4" | "absolute-win-4.0" | "all-kfs" => run_absolute_win_v4_bench(),
                 other => bail!("unknown bench suite: {other}"),
             };
             let json = serde_json::to_string_pretty(&result)?;
@@ -1176,6 +1186,7 @@ fn run_bench(command: BenchCommand) -> anyhow::Result<()> {
             let all_lanes = run_all_lanes_bench();
             let absolute_win_v2 = run_absolute_win_v2_bench();
             let absolute_win_v3 = run_absolute_win_v3_bench();
+            let absolute_win_v4 = run_absolute_win_v4_bench();
             println!(
                 "{}",
                 serde_json::to_string_pretty(&serde_json::json!({
@@ -1185,7 +1196,8 @@ fn run_bench(command: BenchCommand) -> anyhow::Result<()> {
                     "final_kf": final_kf,
                     "all_lanes": all_lanes,
                     "absolute_win_v2": absolute_win_v2,
-                    "absolute_win_v3": absolute_win_v3
+                    "absolute_win_v3": absolute_win_v3,
+                    "absolute_win_v4": absolute_win_v4
                 }))?
             );
             if !fixture.gates_passed
@@ -1195,6 +1207,7 @@ fn run_bench(command: BenchCommand) -> anyhow::Result<()> {
                 || !all_lanes.gates_passed
                 || !absolute_win_v2.gates_passed
                 || !absolute_win_v3.gates_passed
+                || !absolute_win_v4.gates_passed
             {
                 bail!("accuracy fixtures failed");
             }
@@ -1273,8 +1286,49 @@ fn run_code(command: CodeCommand) -> anyhow::Result<()> {
                 print!("{}", report.output);
             }
         }
+        CodeCommand::BehaviorGate {
+            before,
+            after,
+            json,
+        } => {
+            let before_output = run_shell_capture(&before)?;
+            let after_output = run_shell_capture(&after)?;
+            let passed = before_output == after_output;
+            let report = serde_json::json!({
+                "gate": "streetman-code-behavior-equivalence-v1",
+                "status": if passed { "pass" } else { "fail" },
+                "before": before,
+                "after": after,
+                "before_output": before_output,
+                "after_output": after_output
+            });
+            if json {
+                println!("{}", serde_json::to_string_pretty(&report)?);
+            } else {
+                println!(
+                    "streetman code behavior gate {}",
+                    report["status"].as_str().unwrap_or("fail")
+                );
+            }
+            if !passed {
+                bail!("code behavior gate failed");
+            }
+        }
     }
     Ok(())
+}
+
+fn run_shell_capture(command: &str) -> anyhow::Result<serde_json::Value> {
+    let output = Command::new("sh")
+        .arg("-c")
+        .arg(command)
+        .output()
+        .with_context(|| format!("failed to run behavior command `{command}`"))?;
+    Ok(serde_json::json!({
+        "status": output.status.code(),
+        "stdout": String::from_utf8_lossy(&output.stdout),
+        "stderr": String::from_utf8_lossy(&output.stderr)
+    }))
 }
 
 fn run_security(command: SecurityCommand) -> anyhow::Result<()> {

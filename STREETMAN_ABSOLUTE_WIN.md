@@ -1,6 +1,6 @@
 # Streetman Absolute Win Plan
 
-Streetman 3.0 defines its strongest public lane as:
+Streetman 4.0 defines its strongest public lane as:
 
 ```text
 highest compression that is also lossless, accuracy-100, reversible or
@@ -24,7 +24,7 @@ the same local gates.
 Run:
 
 ```bash
-streetman bench run --suite absolute-win-3
+streetman bench run --suite absolute-win-4
 ```
 
 The gate covers 17 dimensions:
@@ -50,6 +50,10 @@ The gate covers 17 dimensions:
 It also records enterprise product-surface cases for config UX, RBAC,
 compliance mapping, SBOM, release attestation, deployment templates, local
 observability, and daemon smoke coverage.
+
+The v4 gate adds the attached all-Case targets: optimized prose latency, stacked
+prose below the caveman token target at accuracy 100, widened JSON/log
+structural compression, and the code behavior-equivalence CLI gate.
 
 It records two published-baseline claim-boundary cases:
 

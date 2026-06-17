@@ -1,5 +1,23 @@
 # Changelog
 
+## 4.0.0 - 2026-06-17
+
+- Added `streetman bench run --suite absolute-win-4`, the all-Case executable gate
+  for the attached engineer plan.
+- Optimized the prose hot path by moving protected-token, phrase, numeric, log,
+  HTML, and sensitive-data regexes to lazy statics, adding an embedded
+  word/skeleton shortcut table, and caching token-greedy word decisions.
+- Added deterministic Case-9 stacked prose rewrite for long prose, gated by
+  accuracy and never-worse token checks.
+- Added JSON columnar delta factoring and tightened log run-length templates for
+  the widened logs/JSON lane.
+- Added `streetman code behavior-gate` for behavior-equivalence proof of code
+  minimization.
+- Added zeroized archive encryption buffers for the copied plaintext used during
+  encrypted archive writes.
+- Added `docs/absolute-win-4.0.md` and bumped source install/plugin manifests to
+  `4.0.0`.
+
 ## 3.0.0 - 2026-06-17
 
 - Added `streetman bench run --suite absolute-win-3`, extending the v2

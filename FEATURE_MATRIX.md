@@ -30,9 +30,10 @@ This matrix tracks the requested Headroom + Token Optimizer parity work.
 | Token-greedy safety | N/A | Prose-shortening can inflate real tokens | `streetman bench run --suite token-greedy` proves actual-token candidate selection and never-worse-than-raw guard |
 | Final Case gate | N/A | N/A | `streetman bench run --suite final-case` verifies implemented final-design pieces; roadmap claims remain excluded |
 | All-lanes gate | N/A | N/A | `streetman bench run --suite all-lanes` verifies token correctness, prose stacking, logs/JSON, code, reversibility/context, performance smoke, and enterprise-local controls |
-| Published-baseline gate | LLMLingua raw ratio is lossy/model-based | LeanCTX is network-oriented/lossy | `streetman bench run --suite absolute-win-3` verifies the lossless/offline/reversible lane and tracks both as raw-ratio baselines, not local measured defeats |
+| Published-baseline gate | LLMLingua raw ratio is lossy/model-based | LeanCTX is network-oriented/lossy | `streetman bench run --suite absolute-win-4` verifies the lossless/offline/reversible lane and tracks both as raw-ratio baselines, not local measured defeats |
 | Enterprise UX | Config examples only | Commercial deployment posture | `streetman enterprise init-config --protect --push-registry`, RBAC, compliance, SBOM, release attestation, deployment, observability, and report commands |
 | Resident service path | Proxy/runtime services | Proxy runtime | `streetman daemon` provides a local warm HTTP health/compress service with CI smoke coverage |
+| All-Case final gate | Lossy raw-ratio systems fail accuracy-100 lane | Code-minimalism competitors lack behavior proof | `streetman bench run --suite absolute-win-4` verifies stacked prose, warm prose latency, JSON/log widening, behavior-equivalence gate, and enterprise/privacy surfaces |
 
 ## OSS vs Enterprise Segregation
 
@@ -55,5 +56,6 @@ Current committed evidence: `benchmarks/results/competitor-live.json`,
 `benchmarks/results/final-case-0.3.json`, and
 `benchmarks/results/all-lanes-1.0.json`, and
 `benchmarks/results/absolute-win-2.0.json`, and
-`benchmarks/results/absolute-win-3.0.json`. Broader hosted/provider raw-ratio
+`benchmarks/results/absolute-win-3.0.json`, and
+`benchmarks/results/absolute-win-4.0.json`. Broader hosted/provider raw-ratio
 claims still require additional snapshots.

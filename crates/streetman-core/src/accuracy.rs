@@ -1,5 +1,6 @@
 use regex::Regex;
 use serde::{Deserialize, Serialize};
+use std::sync::OnceLock;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AccuracyReport {
@@ -32,26 +33,12 @@ pub fn accuracy_check(original: &str, candidate: &str) -> AccuracyReport {
 }
 
 pub fn protected_tokens(input: &str) -> Vec<String> {
-    let fence_re = Regex::new(r"(?s)```.*?```").expect("fenced code regex");
     let mut tokens = Vec::new();
-    for mat in fence_re.find_iter(input) {
+    for mat in fence_regex().find_iter(input) {
         tokens.push(mat.as_str().to_string());
     }
-    let without_fences = fence_re.replace_all(input, " ");
-    let patterns = [
-        r"https?://[^\s)]+",
-        r"`[^`\n]+`",
-        r"\bCVE-\d{4}-\d+\b",
-        r"\b[A-Z]{2,}-\d+\b",
-        r"\b\d+\.\d+(?:\.\d+)?\b",
-        r"\b\d+(?:ms|s|min|h|KB|MB|GB|%)\b",
-        r"\b[A-Za-z_][A-Za-z0-9_]*\([^)]*\)",
-        r"\b[A-Za-z_][A-Za-z0-9_]*::[A-Za-z_][A-Za-z0-9_]*\b",
-        r"\b[A-Za-z_][A-Za-z0-9_]*_[A-Za-z0-9_]+\b",
-        r"\b[a-z]+[A-Z][A-Za-z0-9]*\b",
-    ];
-    for pattern in patterns {
-        let re = Regex::new(pattern).expect("protected token regex");
+    let without_fences = fence_regex().replace_all(input, " ");
+    for re in protected_regexes() {
         for mat in re.find_iter(&without_fences) {
             tokens.push(mat.as_str().to_string());
         }
@@ -59,6 +46,32 @@ pub fn protected_tokens(input: &str) -> Vec<String> {
     tokens.sort();
     tokens.dedup();
     tokens
+}
+
+fn fence_regex() -> &'static Regex {
+    static RE: OnceLock<Regex> = OnceLock::new();
+    RE.get_or_init(|| Regex::new(r"(?s)```.*?```").expect("fenced code regex"))
+}
+
+fn protected_regexes() -> &'static [Regex] {
+    static RES: OnceLock<Vec<Regex>> = OnceLock::new();
+    RES.get_or_init(|| {
+        [
+            r"https?://[^\s)]+",
+            r"`[^`\n]+`",
+            r"\bCVE-\d{4}-\d+\b",
+            r"\b[A-Z]{2,}-\d+\b",
+            r"\b\d+\.\d+(?:\.\d+)?\b",
+            r"\b\d+(?:ms|s|min|h|KB|MB|GB|%)\b",
+            r"\b[A-Za-z_][A-Za-z0-9_]*\([^)]*\)",
+            r"\b[A-Za-z_][A-Za-z0-9_]*::[A-Za-z_][A-Za-z0-9_]*\b",
+            r"\b[A-Za-z_][A-Za-z0-9_]*_[A-Za-z0-9_]+\b",
+            r"\b[a-z]+[A-Z][A-Za-z0-9]*\b",
+        ]
+        .into_iter()
+        .map(|pattern| Regex::new(pattern).expect("protected token regex"))
+        .collect()
+    })
 }
 
 #[cfg(test)]

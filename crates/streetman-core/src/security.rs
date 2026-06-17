@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use std::sync::OnceLock;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SensitiveFinding {
@@ -46,7 +47,7 @@ pub fn security_attestation() -> SecurityAttestation {
         SecurityClaim {
             id: "Case-E3".to_string(),
             status: "pass".to_string(),
-            evidence: "secret/PII classifier marks archive records as sensitive before encrypted storage".to_string(),
+            evidence: "secret/PII classifier marks archive records as sensitive before encrypted storage; archive encryption copies plaintext into a Zeroizing buffer".to_string(),
         },
         SecurityClaim {
             id: "Case-E7".to_string(),
@@ -100,25 +101,11 @@ pub fn security_attestation() -> SecurityAttestation {
 }
 
 pub fn classify_sensitive(input: &str) -> Vec<SensitiveFinding> {
-    let patterns = [
-        ("openai-key", r"\bsk-[A-Za-z0-9_-]{8,}\b"),
-        ("aws-access-key", r"\bAKIA[0-9A-Z]{12,}\b"),
-        (
-            "email",
-            r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b",
-        ),
-        ("possible-pan", r"\b(?:\d[ -]*?){13,19}\b"),
-        (
-            "generic-secret",
-            r"(?i)\b(api[_-]?key|secret|token|password)\s*[:=]\s*[^\s]+",
-        ),
-    ];
     let mut findings = Vec::new();
-    for (kind, pattern) in patterns {
-        let re = regex::Regex::new(pattern).expect("sensitive regex");
+    for (kind, re) in sensitive_regexes() {
         for hit in re.find_iter(input) {
             findings.push(SensitiveFinding {
-                kind: kind.to_string(),
+                kind: (*kind).to_string(),
                 marker: blake3::hash(hit.as_str().as_bytes()).to_hex()[..12].to_string(),
             });
         }
@@ -126,6 +113,28 @@ pub fn classify_sensitive(input: &str) -> Vec<SensitiveFinding> {
     findings.sort_by(|a, b| a.kind.cmp(&b.kind).then_with(|| a.marker.cmp(&b.marker)));
     findings.dedup_by(|a, b| a.kind == b.kind && a.marker == b.marker);
     findings
+}
+
+fn sensitive_regexes() -> &'static [(&'static str, regex::Regex)] {
+    static RES: OnceLock<Vec<(&'static str, regex::Regex)>> = OnceLock::new();
+    RES.get_or_init(|| {
+        [
+            ("openai-key", r"\bsk-[A-Za-z0-9_-]{8,}\b"),
+            ("aws-access-key", r"\bAKIA[0-9A-Z]{12,}\b"),
+            (
+                "email",
+                r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b",
+            ),
+            ("possible-pan", r"\b(?:\d[ -]*?){13,19}\b"),
+            (
+                "generic-secret",
+                r"(?i)\b(api[_-]?key|secret|token|password)\s*[:=]\s*[^\s]+",
+            ),
+        ]
+        .into_iter()
+        .map(|(kind, pattern)| (kind, regex::Regex::new(pattern).expect("sensitive regex")))
+        .collect()
+    })
 }
 
 #[cfg(test)]

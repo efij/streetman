@@ -235,6 +235,22 @@ fn cli_absolute_win_v3_bench_smoke() {
 }
 
 #[test]
+fn cli_absolute_win_v4_bench_smoke() {
+    let output = Command::new(env!("CARGO_BIN_EXE_streetman"))
+        .args(["bench", "run", "--suite", "absolute-win-4"])
+        .stdout(Stdio::piped())
+        .output()
+        .expect("run absolute win v4 bench");
+    assert!(output.status.success());
+    let stdout = String::from_utf8(output.stdout).expect("utf8");
+    assert!(stdout.contains("absolute-win-4.0"));
+    assert!(stdout.contains("fix2-case9-stacked-prose-under-caveman-target"));
+    assert!(stdout.contains("widen4-json-columnar-delta-90pp"));
+    assert!(stdout.contains("take5-case-c3-behavior-equivalence-cli-gate"));
+    assert!(stdout.contains("\"gates_passed\": true"));
+}
+
+#[test]
 fn cli_fit_decode_tokenizer_security_scan_smoke() {
     let mut child = Command::new(env!("CARGO_BIN_EXE_streetman"))
         .args([
@@ -437,6 +453,29 @@ fn cli_accuracy_fixtures_include_token_greedy() {
     assert!(stdout.contains("absolute-win-2-pass"));
     assert!(stdout.contains("\"absolute_win_v3\""));
     assert!(stdout.contains("absolute-win-3-pass"));
+    assert!(stdout.contains("\"absolute_win_v4\""));
+    assert!(stdout.contains("absolute-win-4-pass"));
+}
+
+#[test]
+fn cli_code_behavior_gate_smoke() {
+    let output = Command::new(env!("CARGO_BIN_EXE_streetman"))
+        .args([
+            "code",
+            "behavior-gate",
+            "--before",
+            "printf 'same\\n'",
+            "--after",
+            "printf 'same\\n'",
+            "--json",
+        ])
+        .stdout(Stdio::piped())
+        .output()
+        .expect("run behavior gate");
+    assert!(output.status.success());
+    let stdout = String::from_utf8(output.stdout).expect("utf8");
+    assert!(stdout.contains("streetman-code-behavior-equivalence-v1"));
+    assert!(stdout.contains("\"status\": \"pass\""));
 }
 
 #[test]
