@@ -1,5 +1,20 @@
 # Changelog
 
+## 4.0.1 - 2026-06-17
+
+- Fixed prose mode regression: `lite`, `full`, and `ultra` now produce
+  mode-dependent token-positive prose output again instead of collapsing to
+  byte-identical punctuation stripping.
+- Added a regression test for prose mode differentiation with accuracy 100 and
+  never-worse token counts.
+- Added Case-C2 versioned platform-builtin oracle:
+  `streetman code builtin-oracle --language typescript --runtime node18 --task
+  "make an http request" --json`.
+- Added `take5-case-c2-versioned-builtin-oracle` to the `absolute-win-4` gate so
+  TAKE 5 covers Case-C1/Case-C2/Case-C3 rather than only decision/behavior proof.
+- Hardened the daemon smoke test against connection reset after response close.
+- Bumped source install/plugin manifests to `4.0.1`.
+
 ## 4.0.0 - 2026-06-17
 
 - Added `streetman bench run --suite absolute-win-4`, the all-Case executable gate

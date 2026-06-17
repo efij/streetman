@@ -17,15 +17,15 @@ use streetman_core::{
         run_absolute_win_v4_bench, run_all_lanes_bench, run_final_kf_bench, run_fixture_bench,
         run_redteam_bench, run_token_greedy_bench,
     },
-    build_run_receipt, check_policy, classify_sensitive, compile_shortlang, compliance_map,
-    compress, decode_archive_free, default_protected_config_path, deployment_bundle,
-    elide_unchanged_regions, enterprise_config_template, enterprise_report, fit_to_token_budget,
-    gate_diff, lean_instructions, observability_template, ponytail_h2h_fixture,
-    ponytail_kill_report, protect_config, prove_diff, prove_diff_with_normal_twin,
-    push_protected_config, rbac_template, read_protected_config, release_attestation, review_diff,
-    sbom, security_attestation, token_estimate, tokenizer_profile, verify_certificate,
-    verify_protected_config, CompressionCertificate, CompressionMode, ContentDomain,
-    EnterpriseArtifact, LeanGateConfig, LeanMode, StreetmanConfig,
+    build_run_receipt, builtin_oracle, check_policy, classify_sensitive, compile_shortlang,
+    compliance_map, compress, decode_archive_free, default_protected_config_path,
+    deployment_bundle, elide_unchanged_regions, enterprise_config_template, enterprise_report,
+    fit_to_token_budget, gate_diff, lean_instructions, observability_template,
+    ponytail_h2h_fixture, ponytail_kill_report, protect_config, prove_diff,
+    prove_diff_with_normal_twin, push_protected_config, rbac_template, read_protected_config,
+    release_attestation, review_diff, sbom, security_attestation, token_estimate,
+    tokenizer_profile, verify_certificate, verify_protected_config, CompressionCertificate,
+    CompressionMode, ContentDomain, EnterpriseArtifact, LeanGateConfig, LeanMode, StreetmanConfig,
 };
 
 #[derive(Parser)]
@@ -253,6 +253,16 @@ enum CodeCommand {
         before: String,
         #[arg(long)]
         after: String,
+        #[arg(long)]
+        json: bool,
+    },
+    BuiltinOracle {
+        #[arg(long)]
+        language: String,
+        #[arg(long)]
+        runtime: String,
+        #[arg(long)]
+        task: String,
         #[arg(long)]
         json: bool,
     },
@@ -1312,6 +1322,27 @@ fn run_code(command: CodeCommand) -> anyhow::Result<()> {
             }
             if !passed {
                 bail!("code behavior gate failed");
+            }
+        }
+        CodeCommand::BuiltinOracle {
+            language,
+            runtime,
+            task,
+            json,
+        } => {
+            let report = builtin_oracle(&language, &runtime, &task);
+            if json {
+                println!("{}", serde_json::to_string_pretty(&report)?);
+            } else {
+                println!(
+                    "{} {} {}",
+                    report.gate,
+                    report.status,
+                    report.builtin.as_deref().unwrap_or("no-match")
+                );
+            }
+            if report.status != "pass" {
+                bail!("builtin oracle did not find a native/platform builtin");
             }
         }
     }

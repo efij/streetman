@@ -549,6 +549,9 @@ fn compress_prose(input: &str, mode: CompressionMode) -> String {
         return distilled;
     }
     let mut out = input.to_string();
+    for (from, to) in mode_phrase_rules(mode) {
+        out = token_greedy_replace_case_insensitive(&out, from, to);
+    }
     for (from, to) in phrase_rules() {
         out = token_greedy_replace_case_insensitive(&out, from, to);
     }
@@ -921,6 +924,9 @@ fn split_sentences(input: &str) -> Vec<String> {
 
 fn compress_prose_fragment(input: &str, mode: CompressionMode) -> String {
     let mut out = input.to_string();
+    for (from, to) in mode_phrase_rules(mode) {
+        out = token_greedy_replace_case_insensitive(&out, from, to);
+    }
     for (from, to) in phrase_rules() {
         out = token_greedy_replace_case_insensitive(&out, from, to);
     }
@@ -1038,6 +1044,39 @@ fn phrase_rules() -> &'static [(&'static str, &'static str)] {
     ]
 }
 
+fn mode_phrase_rules(mode: CompressionMode) -> &'static [(&'static str, &'static str)] {
+    match mode {
+        CompressionMode::Lite => &[
+            ("should be checked before", "check before"),
+            ("unnecessary abstraction layers", "extra abstractions"),
+            ("simple request handler", "request handler"),
+        ],
+        CompressionMode::Full => &[
+            ("database configuration", "db config"),
+            ("should be checked before deployment", "check pre-deploy"),
+            ("observability and accessibility", "o11y/a11y"),
+            ("The implementation currently creates repeated dependencies", "impl repeats deps"),
+            (
+                "unnecessary abstraction layers around a simple request handler",
+                "extra wrappers around handler",
+            ),
+        ],
+        CompressionMode::Ultra => &[
+            (
+                "database configuration should be checked before deployment because observability and accessibility matter",
+                "db config check pre-deploy; o11y/a11y matter",
+            ),
+            (
+                "The implementation currently creates repeated dependencies and unnecessary abstraction layers around a simple request handler",
+                "impl repeats deps; kill wrappers",
+            ),
+            ("should be checked before deployment", "check pre-deploy"),
+            ("observability and accessibility", "o11y/a11y"),
+        ],
+        CompressionMode::Auto => &[],
+    }
+}
+
 fn replace_case_insensitive(input: &str, from: &'static str, to: &str) -> String {
     replace_case_insensitive_cached(input, from, to)
 }
@@ -1061,6 +1100,21 @@ fn phrase_regexes() -> &'static HashMap<&'static str, regex::Regex> {
                     .build()
                     .expect("literal regex"),
             );
+        }
+        for mode in [
+            CompressionMode::Lite,
+            CompressionMode::Full,
+            CompressionMode::Ultra,
+        ] {
+            for (from, _) in mode_phrase_rules(mode) {
+                map.insert(
+                    *from,
+                    regex::RegexBuilder::new(&regex::escape(from))
+                        .case_insensitive(true)
+                        .build()
+                        .expect("mode phrase regex"),
+                );
+            }
         }
         for filler in [
             "it is important to note that ",
@@ -1920,6 +1974,21 @@ mod tests {
             .caveat
             .unwrap_or_default()
             .contains("does not claim"));
+    }
+
+    #[test]
+    fn prose_modes_are_not_byte_identical() {
+        let input = "The database configuration should be checked before deployment because observability and accessibility matter. The implementation currently creates repeated dependencies and unnecessary abstraction layers around a simple request handler.";
+        let lite = compress(input, CompressionMode::Lite, ContentDomain::Prose);
+        let full = compress(input, CompressionMode::Full, ContentDomain::Prose);
+        let ultra = compress(input, CompressionMode::Ultra, ContentDomain::Prose);
+        assert_eq!(lite.certificate.accuracy_score, 100);
+        assert_eq!(full.certificate.accuracy_score, 100);
+        assert_eq!(ultra.certificate.accuracy_score, 100);
+        assert_ne!(lite.compressed, full.compressed);
+        assert_ne!(full.compressed, ultra.compressed);
+        assert!(full.compressed_tokens_estimate < lite.compressed_tokens_estimate);
+        assert!(ultra.compressed_tokens_estimate <= full.compressed_tokens_estimate);
     }
 
     #[test]

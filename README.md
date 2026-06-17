@@ -47,7 +47,7 @@ absolute-win lane.
 - `streetman lean` — implementation-minimalism layer: instructions, review, audit, gate, proof certificates, and Ponytail H2H fixtures.
 - Token-greedy compression — actual `tiktoken` counts drive transforms; final output is never worse than raw.
 
-Current source release: `4.0.0`.
+Current source release: `4.0.1`.
 
 Primary v4 all-Case gate:
 
@@ -143,7 +143,7 @@ Nobody else in the category offers independent verification infra.
 cargo install --git https://github.com/efij/streetman streetman-cli --bin streetman --locked
 ```
 
-This installs the latest pushed source version. Current source release: `4.0.0`.
+This installs the latest pushed source version. Current source release: `4.0.1`.
 
 Run the fixture gate after install:
 

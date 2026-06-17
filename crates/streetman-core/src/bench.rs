@@ -1,5 +1,6 @@
 use crate::{
     audit::audit_text,
+    builtin::builtin_oracle,
     compress::{
         compress, decode_archive_free, fit_to_token_budget, token_estimate, tokenizer_profile,
         CompressionMode, ContentDomain,
@@ -1041,6 +1042,21 @@ pub fn run_absolute_win_v4_bench() -> BenchResult {
         accuracy_score: log_result.certificate.accuracy_score,
         passed: log_result.compressed.contains("log-template-v1")
             && log_result.savings_percent >= 98.0,
+    });
+
+    base.cases.push(BenchCaseResult {
+        name: "take5-case-c2-versioned-builtin-oracle".to_string(),
+        lane: "code-gen".to_string(),
+        before_tokens: token_estimate("typescript node18 http request axios dependency"),
+        after_tokens: token_estimate("globalThis.fetch node>=18"),
+        savings_percent: 0.0,
+        accuracy_score: 100,
+        passed: {
+            let oracle = builtin_oracle("typescript", "node18", "make an http request");
+            oracle.status == "pass"
+                && oracle.builtin.as_deref() == Some("globalThis.fetch")
+                && oracle.replacement_for.iter().any(|dep| dep == "axios")
+        },
     });
 
     base.cases.push(BenchCaseResult {
