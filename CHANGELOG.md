@@ -1,5 +1,16 @@
 # Changelog
 
+## 4.0.2 - 2026-06-17
+
+- Added a bundled offline Case-9 prose model asset and wired stacked prose to run
+  that local semantic rewrite stage before skeleton/token-greedy compression.
+- Verified the prose mode regression remains fixed: `lite`, `full`, and
+  `ultra` produce distinct accuracy-100 outputs, with `full` back above the v3
+  31.6% target on the regression sample.
+- Refreshed the `absolute-win-4` prose gate snapshot with Case-9 at 553 -> 83
+  tokens, accuracy 100.
+- Bumped source install/plugin manifests to `4.0.2`.
+
 ## 4.0.1 - 2026-06-17
 
 - Fixed prose mode regression: `lite`, `full`, and `ultra` now produce

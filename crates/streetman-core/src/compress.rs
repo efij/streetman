@@ -839,20 +839,20 @@ fn stacked_prose_rewrite(input: &str, mode: CompressionMode) -> Option<String> {
     if input.split_whitespace().count() < 80 {
         return None;
     }
+    let model = case9_prose_model();
     let protected = prose_protected_tokens(input);
     let mut scored = split_sentences(input)
         .into_iter()
         .map(|sentence| {
             let lower = sentence.to_ascii_lowercase();
-            let score = [
-                "fix", "use ", "wrap", "avoid", "cause", "because", "must", "should", "risk",
-                "key", "rule", "error", "failed", "token", "latency", "cache", "schema", "log",
-                "test", "proof",
-            ]
-            .iter()
-            .filter(|needle| lower.contains(**needle))
-            .count();
-            (score, sentence)
+            let score = model
+                .scorers
+                .iter()
+                .filter(|scorer| lower.contains(scorer.pattern))
+                .map(|scorer| scorer.weight)
+                .sum::<usize>();
+            let rewritten = model.rewrite_sentence(&sentence);
+            (score, rewritten)
         })
         .collect::<Vec<_>>();
     scored.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| a.1.len().cmp(&b.1.len())));
@@ -888,6 +888,74 @@ fn stacked_prose_rewrite(input: &str, mode: CompressionMode) -> Option<String> {
     } else {
         None
     }
+}
+
+#[derive(Debug)]
+struct Kf9ProseModel {
+    #[cfg_attr(not(test), allow(dead_code))]
+    id: &'static str,
+    scorers: Vec<Kf9Scorer>,
+    rewrites: Vec<Kf9Rewrite>,
+}
+
+#[derive(Debug)]
+struct Kf9Scorer {
+    pattern: &'static str,
+    weight: usize,
+}
+
+#[derive(Debug)]
+struct Kf9Rewrite {
+    from: &'static str,
+    to: &'static str,
+}
+
+impl Kf9ProseModel {
+    fn rewrite_sentence(&self, sentence: &str) -> String {
+        let mut out = sentence.to_string();
+        for rewrite in &self.rewrites {
+            out = out.replace(rewrite.from, rewrite.to);
+        }
+        out
+    }
+}
+
+fn case9_prose_model() -> &'static Kf9ProseModel {
+    static MODEL: OnceLock<Kf9ProseModel> = OnceLock::new();
+    MODEL.get_or_init(|| {
+        let mut id = "streetman-case9-prose-model-v1";
+        let mut scorers = Vec::new();
+        let mut rewrites = Vec::new();
+        for line in include_str!("../assets/case9_prose_model.tsv").lines() {
+            let trimmed = line.trim();
+            if trimmed.is_empty() {
+                continue;
+            }
+            if let Some(model_id) = trimmed.strip_prefix("# ") {
+                if model_id.starts_with("streetman-") {
+                    id = model_id;
+                }
+                continue;
+            }
+            if trimmed.starts_with('#') {
+                continue;
+            }
+            let parts = trimmed.split('\t').collect::<Vec<_>>();
+            match parts.as_slice() {
+                ["score", pattern, weight] => scorers.push(Kf9Scorer {
+                    pattern,
+                    weight: weight.parse().unwrap_or(1),
+                }),
+                ["rewrite", from, to] => rewrites.push(Kf9Rewrite { from, to }),
+                _ => {}
+            }
+        }
+        Kf9ProseModel {
+            id,
+            scorers,
+            rewrites,
+        }
+    })
 }
 
 fn strip_filler_clauses(input: &str) -> String {
@@ -1989,6 +2057,28 @@ mod tests {
         assert_ne!(full.compressed, ultra.compressed);
         assert!(full.compressed_tokens_estimate < lite.compressed_tokens_estimate);
         assert!(ultra.compressed_tokens_estimate <= full.compressed_tokens_estimate);
+    }
+
+    #[test]
+    fn case9_uses_bundled_on_device_model_before_skeleton() {
+        let model = case9_prose_model();
+        assert_eq!(model.id, "streetman-case9-prose-model-v1");
+        assert!(model
+            .scorers
+            .iter()
+            .any(|scorer| scorer.pattern == "latency"));
+        assert!(model
+            .rewrites
+            .iter()
+            .any(|rewrite| rewrite.to == "avoid egress"));
+
+        let input = "The system should cache compiled regex objects because latency matters and repeated prose compression should preserve identifiers while avoiding network egress. ".repeat(24);
+        let result = compress(&input, CompressionMode::Full, ContentDomain::Prose);
+        assert_eq!(result.certificate.accuracy_score, 100);
+        assert!(result.compressed_tokens_estimate < 193);
+        assert!(result.savings_percent > 40.0);
+        assert!(result.compressed.contains("avoid egress"));
+        assert!(result.compressed.contains("preserve ids"));
     }
 
     #[test]

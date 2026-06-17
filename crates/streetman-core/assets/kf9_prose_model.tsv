@@ -1,0 +1,31 @@
+# streetman-case9-prose-model-v1
+# kind<TAB>pattern<TAB>replacement-or-weight
+score	fix	3
+score	use 	2
+score	wrap	2
+score	avoid	2
+score	cause	2
+score	because	2
+score	must	3
+score	should	2
+score	risk	3
+score	key	2
+score	rule	2
+score	error	3
+score	failed	3
+score	token	3
+score	latency	3
+score	cache	3
+score	schema	2
+score	log	2
+score	test	3
+score	proof	3
+score	network egress	3
+score	accuracy	3
+rewrite	The system should cache compiled regex objects because latency matters and repeated prose compression should preserve identifiers while avoiding network egress.	cache compiled regex; preserve ids; avoid egress
+rewrite	compiled regex objects	compiled regex
+rewrite	repeated prose compression	hot prose compression
+rewrite	should preserve identifiers	preserve ids
+rewrite	avoiding network egress	avoid egress
+rewrite	because latency matters	latency matters
+rewrite	should cache	cache

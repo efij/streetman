@@ -7,7 +7,7 @@ cargo install --git https://github.com/efij/streetman streetman-cli --bin street
 ```
 
 The Git install path tracks the latest pushed source release. Current source
-release: `4.0.1`.
+release: `4.0.2`.
 
 Build and run locally:
 
