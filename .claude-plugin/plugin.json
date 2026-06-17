@@ -1,6 +1,9 @@
 {
   "name": "streetman",
-  "version": "4.0.2",
-  "description": "Absolute-win v4 all-Case gated compression, Lean mode, code transport, daemon, and enterprise controls.",
-  "author": { "name": "Streetman" }
+  "version": "6.0.0",
+  "description": "One-mode (auto) lossless token compression that beats caveman on prose, with per-prompt savings shown each turn. Logs/JSON/code lanes, daemon, reversible decode, enterprise controls.",
+  "author": { "name": "Streetman", "url": "https://github.com/efij/streetman" },
+  "homepage": "https://github.com/efij/streetman",
+  "hooks": "./hooks/hooks.json",
+  "commands": "./commands"
 }

@@ -204,11 +204,10 @@ fn ensure_event_hash_columns(conn: &Connection) -> anyhow::Result<()> {
 }
 
 fn derive_local_key(root: &Path) -> [u8; 32] {
-    if let Ok(value) = std::env::var("STREETMAN_ARCHIVE_KEY") {
-        if !value.trim().is_empty() {
+    if let Ok(value) = std::env::var("STREETMAN_ARCHIVE_KEY")
+        && !value.trim().is_empty() {
             return blake3::derive_key("streetman archive byok v1", value.as_bytes());
         }
-    }
     let material = format!(
         "streetman-local-archive:{}:{}",
         std::env::var("USER").unwrap_or_default(),
@@ -243,7 +242,7 @@ fn search_lines(text: &str, query: &str) -> String {
         })
         .filter(|(score, _)| *score > 0)
         .collect::<Vec<_>>();
-    scored.sort_by(|a, b| b.0.cmp(&a.0));
+    scored.sort_by_key(|(score, _)| std::cmp::Reverse(*score));
     scored
         .into_iter()
         .take(25)

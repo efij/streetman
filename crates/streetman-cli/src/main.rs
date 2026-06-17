@@ -54,7 +54,7 @@ enum Commands {
     Compress {
         #[arg(value_name = "FILE")]
         file: Option<PathBuf>,
-        #[arg(long, default_value = "full")]
+        #[arg(long, default_value = "auto")]
         mode: ModeArg,
         #[arg(long, default_value = "auto")]
         domain: DomainArg,
@@ -64,6 +64,9 @@ enum Commands {
         no_archive: bool,
         #[arg(long)]
         fit: Option<usize>,
+        /// Keep output human-readable (caps at Full; skips Ultra's telegraphic drop).
+        #[arg(long)]
+        readable: bool,
     },
     Decode {
         #[arg(value_name = "FILE")]
@@ -654,12 +657,21 @@ fn main() -> anyhow::Result<()> {
             json,
             no_archive,
             fit,
+            readable,
         } => {
             let input = read_input(file)?;
+            // `--readable` caps at Full so output stays human-readable (skips
+            // Ultra's telegraphic function-word drop). Otherwise honor `--mode`
+            // (default `auto`, which the core resolves to max-safe Ultra).
+            let effective_mode = if readable {
+                CompressionMode::Full
+            } else {
+                mode.into()
+            };
             let result = if let Some(budget) = fit {
                 fit_to_token_budget(&input, domain.into(), budget)
             } else {
-                compress(&input, mode.into(), domain.into())
+                compress(&input, effective_mode, domain.into())
             };
             let archive_record = if !no_archive && result.compressed != input {
                 let archive = Archive::open_default()?;
@@ -680,8 +692,24 @@ fn main() -> anyhow::Result<()> {
                 println!("{}", serde_json::to_string_pretty(&payload)?);
             } else {
                 print!("{}", result.compressed);
+                // Crystal-clear before/after for this prompt, on stderr so stdout
+                // stays the pure compressed payload. Counts are real tiktoken BPE
+                // (not a heuristic); the tokenizer is named so the number is
+                // verifiable. Non-GPT models fall back to o200k_base as a proxy.
+                let before = result.original_tokens_estimate;
+                let after = result.compressed_tokens_estimate;
+                let tok = tokenizer_profile(None);
+                let proxy = if tok.caveat.is_some() { " proxy" } else { "" };
+                eprintln!(
+                    "\nstreetman: {before} -> {after} tokens (saved {}, {:.1}%) [tokenizer: {}{} / {}]",
+                    before.saturating_sub(after),
+                    result.savings_percent,
+                    tok.tokenizer,
+                    proxy,
+                    tok.requested_model
+                );
                 if let Some(record) = archive_record {
-                    eprintln!("\n{}", retrieval_marker(&record.hash));
+                    eprintln!("{}", retrieval_marker(&record.hash));
                 }
             }
         }
@@ -1415,11 +1443,10 @@ fn run_enterprise(command: EnterpriseCommand) -> anyhow::Result<()> {
                 );
             }
             let artifact = enterprise_config_template();
-            if let Some(parent) = out.parent() {
-                if !parent.as_os_str().is_empty() {
+            if let Some(parent) = out.parent()
+                && !parent.as_os_str().is_empty() {
                     fs::create_dir_all(parent)?;
                 }
-            }
             fs::write(&out, artifact.content)?;
             let mut payload = serde_json::json!({
                 "status": "written",
@@ -1497,16 +1524,58 @@ fn run_daemon(port: u16, once: bool) -> anyhow::Result<()> {
 const DAEMON_MAX_REQUEST_BYTES: usize = 64 * 1024;
 const DAEMON_MAX_BODY_BYTES: usize = 48 * 1024;
 
+/// Total expected request length (headers + declared Content-Length body) once
+/// the header terminator is present. Lets the daemon stop reading exactly when a
+/// well-formed request is complete instead of assuming a single `read()` returns
+/// the whole request (TCP can split or under-fill reads).
+fn full_request_len(buffer: &[u8]) -> Option<usize> {
+    const SEP: &[u8] = b"\r\n\r\n";
+    let header_end = buffer.windows(SEP.len()).position(|w| w == SEP)? + SEP.len();
+    let headers = String::from_utf8_lossy(&buffer[..header_end]);
+    let content_length = headers
+        .lines()
+        .find_map(|line| {
+            let (name, value) = line.split_once(':')?;
+            name.trim()
+                .eq_ignore_ascii_case("content-length")
+                .then(|| value.trim().parse::<usize>().ok())
+                .flatten()
+        })
+        .unwrap_or(0);
+    Some(header_end + content_length)
+}
+
 fn handle_daemon_stream(mut stream: TcpStream) -> anyhow::Result<()> {
-    let mut buffer = [0_u8; DAEMON_MAX_REQUEST_BYTES];
-    let read = stream.read(&mut buffer)?;
-    let request = String::from_utf8_lossy(&buffer[..read]);
-    let (status, response) = if read == DAEMON_MAX_REQUEST_BYTES {
-        (
+    // Accumulate until the request is complete or the size cap is exceeded.
+    // A single read() is not guaranteed to deliver the whole request, and a
+    // keep-alive client will not send EOF, so we stop precisely at headers+body.
+    let mut buffer: Vec<u8> = Vec::with_capacity(8192);
+    let mut chunk = [0_u8; 8192];
+    let mut oversized = false;
+    loop {
+        let n = stream.read(&mut chunk)?;
+        if n == 0 {
+            break;
+        }
+        buffer.extend_from_slice(&chunk[..n]);
+        if buffer.len() > DAEMON_MAX_REQUEST_BYTES {
+            oversized = true;
+            break;
+        }
+        if let Some(total) = full_request_len(&buffer)
+            && buffer.len() >= total {
+                break;
+            }
+    }
+    if oversized {
+        return write_daemon_response(
+            &mut stream,
             "413 Payload Too Large",
-            serde_json::json!({"status": "error", "error": "request too large"}),
-        )
-    } else if request.starts_with("GET /health ") {
+            &serde_json::json!({"status": "error", "error": "request too large"}),
+        );
+    }
+    let request = String::from_utf8_lossy(&buffer);
+    let (status, response) = if request.starts_with("GET /health ") {
         (
             "200 OK",
             serde_json::json!({
@@ -1898,11 +1967,10 @@ fn run_policy(command: PolicyCommand) -> anyhow::Result<()> {
         PolicyCommand::Protect { config, out } => {
             let protected = protect_config(&config)?;
             let out = out.unwrap_or_else(|| default_protected_config_path(&config));
-            if let Some(parent) = out.parent() {
-                if !parent.as_os_str().is_empty() {
+            if let Some(parent) = out.parent()
+                && !parent.as_os_str().is_empty() {
                     fs::create_dir_all(parent)?;
                 }
-            }
             fs::write(&out, serde_json::to_string_pretty(&protected)?)?;
             println!(
                 "{}",
@@ -2250,21 +2318,19 @@ fn handle_proxy_stream(mut stream: TcpStream, provider: &str) -> anyhow::Result<
 fn transform_llm_payload(mut value: serde_json::Value) -> serde_json::Value {
     if let Some(messages) = value.get_mut("messages").and_then(|v| v.as_array_mut()) {
         for message in messages {
-            if let Some(content) = message.get_mut("content") {
-                if let Some(text) = content.as_str() {
+            if let Some(content) = message.get_mut("content")
+                && let Some(text) = content.as_str() {
                     let compiled =
                         compile_shortlang(text, CompressionMode::Full, ContentDomain::Auto);
                     *content = serde_json::Value::String(compiled.wire);
                 }
-            }
         }
     }
-    if let Some(input) = value.get_mut("input") {
-        if let Some(text) = input.as_str() {
+    if let Some(input) = value.get_mut("input")
+        && let Some(text) = input.as_str() {
             let compiled = compile_shortlang(text, CompressionMode::Full, ContentDomain::Auto);
             *input = serde_json::Value::String(compiled.wire);
         }
-    }
     value
 }
 

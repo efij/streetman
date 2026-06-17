@@ -105,6 +105,7 @@ pub fn anchored_diff(before: &str, after: &str) -> AnchoredDiffReport {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn build_diff_report(
     before_tokens: usize,
     after_tokens: usize,

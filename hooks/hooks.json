@@ -5,6 +5,11 @@
         "hooks": [
           {
             "type": "command",
+            "command": "sh \"$STREETMAN_PLUGIN_ROOT/hooks/streetman-bootstrap.sh\"",
+            "commandWindows": "powershell -ExecutionPolicy Bypass -File \"$env:STREETMAN_PLUGIN_ROOT/hooks/streetman-bootstrap.ps1\""
+          },
+          {
+            "type": "command",
             "command": "node \"$STREETMAN_PLUGIN_ROOT/hooks/streetman-activate.js\"",
             "commandWindows": "node \"$env:STREETMAN_PLUGIN_ROOT/hooks/streetman-activate.js\""
           }

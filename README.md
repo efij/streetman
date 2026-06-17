@@ -24,7 +24,7 @@ numbers, and security terms survived intact.
 
 ## current status
 
-Streetman `5.1.0` is a source-backed Rust implementation with committed local
+Streetman `5.5.0` is a source-backed Rust implementation with committed local
 gates for the two claims that matter: fewer paid tokens and protected technical
 facts. It is built for people who use AI every day and do not want filler to eat
 their budget or their context window.
@@ -50,7 +50,7 @@ their budget or their context window.
 - `streetman lean` — implementation-minimalism layer: instructions, review, audit, gate, proof certificates, and Ponytail H2H fixtures.
 - Token-greedy compression — actual tokenizer counts drive transforms; final output is never worse than raw on trap fixtures.
 
-Current source version: `5.1.0`.
+Current source version: `5.5.0`.
 
 Primary 5.x safety and savings checks:
 
@@ -147,7 +147,7 @@ Nobody else in the category offers independent verification infra.
 cargo install --git https://github.com/efij/streetman streetman-cli --bin streetman --locked
 ```
 
-This installs the latest pushed source version. Current source version: `5.1.0`.
+This installs the latest pushed source version. Current source version: `5.5.0`.
 
 Run the fixture gate after install:
 

@@ -806,14 +806,13 @@ fn dependency_from_line(path: Option<&str>, text: &str) -> Option<String> {
         return None;
     }
 
-    if path.ends_with("Cargo.toml") {
-        if let Some((name, _)) = trimmed.split_once('=') {
+    if path.ends_with("Cargo.toml")
+        && let Some((name, _)) = trimmed.split_once('=') {
             let name = name.trim();
             if is_dependency_name(name) {
                 return Some(name.to_string());
             }
         }
-    }
     if path.ends_with("package.json") {
         let cleaned = trimmed.trim_matches('"');
         if let Some((name, _)) = cleaned.split_once("\":") {

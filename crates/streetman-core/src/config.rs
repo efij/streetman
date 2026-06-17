@@ -164,13 +164,12 @@ pub fn check_policy(
     if cfg.blocked_domains.iter().any(|blocked| blocked == domain) {
         violations.push(format!("domain `{domain}` is blocked by policy"));
     }
-    if let Some(max) = cfg.max_input_tokens {
-        if input_tokens_estimate > max {
+    if let Some(max) = cfg.max_input_tokens
+        && input_tokens_estimate > max {
             violations.push(format!(
                 "input token estimate {input_tokens_estimate} exceeds policy max {max}"
             ));
         }
-    }
     if !cfg.require_certificate {
         warnings.push("certificate is optional; adoption-safe default is required".to_string());
     }

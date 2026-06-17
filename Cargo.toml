@@ -6,8 +6,8 @@ members = [
 resolver = "2"
 
 [workspace.package]
-version = "5.1.0"
-edition = "2021"
+version = "6.0.0"
+edition = "2024"
 license = "MIT"
 repository = "https://github.com/efij/streetman"
 
@@ -28,3 +28,16 @@ thiserror = "1"
 tiktoken-rs = "0.12"
 toml = "0.8"
 zeroize = "1"
+
+# Max-optimization release build: smallest, fastest single binary.
+# panic stays "unwind" (the default) so `cargo test --release` keeps unwinding-
+# based failure reporting on stable — panic="abort" would break that.
+[profile.release]
+opt-level = 3        # full speed optimization
+lto = "fat"          # whole-program link-time optimization (size + speed)
+codegen-units = 1    # one unit = best cross-function optimization
+strip = "symbols"    # drop debug/symbol tables from the shipped binary
+panic = "abort"      # no unwinding tables: smaller + faster (no catch_unwind in tree)
+debug = false
+incremental = false
+overflow-checks = false

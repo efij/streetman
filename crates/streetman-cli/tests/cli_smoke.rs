@@ -544,8 +544,20 @@ fn cli_enterprise_surfaces_smoke() {
     }
 }
 
+/// Shared lock so the port-binding daemon tests never run concurrently.
+/// Recovers from a poisoned mutex (a prior test panicking) so one failure does
+/// not cascade into spurious failures of the others.
+fn daemon_test_guard() -> std::sync::MutexGuard<'static, ()> {
+    static GUARD: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    GUARD.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
 #[test]
 fn cli_daemon_once_health_smoke() {
+    // Serialize daemon tests: both grab an ephemeral port then respawn a child to
+    // re-bind it, which races (the OS can hand the freed port to the sibling test)
+    // under the default parallel runner. The lock makes them deterministic.
+    let _serial = daemon_test_guard();
     let listener = std::net::TcpListener::bind(("127.0.0.1", 0)).expect("bind free port");
     let port = listener.local_addr().expect("addr").port();
     drop(listener);
@@ -603,6 +615,7 @@ fn cli_daemon_once_health_smoke() {
 
 #[test]
 fn cli_daemon_rejects_oversized_request() {
+    let _serial = daemon_test_guard();
     let listener = std::net::TcpListener::bind(("127.0.0.1", 0)).expect("bind free port");
     let port = listener.local_addr().expect("addr").port();
     drop(listener);

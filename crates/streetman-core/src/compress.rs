@@ -186,8 +186,8 @@ impl ProseCandidate {
 }
 
 type ProsePass = fn(&str, CompressionMode, &ProseCtx) -> Option<ProseCandidate>;
-// streetman: cap structural n-gram Cases at medium prose; upgrade by caching phrase stats per input.
-const PROSE_STRUCTURAL_WORD_CAP: usize = 160;
+// streetman: cap structural n-gram Cases at long prose; upgrade by caching phrase stats per input.
+const PROSE_STRUCTURAL_WORD_CAP: usize = 2_000;
 
 struct ProseCtx {
     model: &'static str,
@@ -246,12 +246,13 @@ pub struct ProofVerification {
 
 pub fn compress(input: &str, mode: CompressionMode, domain: ContentDomain) -> CompressionResult {
     let resolved_domain = detect_domain(input, domain);
+    // `auto` aims for maximum safe compression: start at Ultra and let
+    // `fallback_modes` cascade down to Full/Lite only if the accuracy/token
+    // guard trips. Ultra is lossless (accuracy 100) and exactly reversible via
+    // the archive, so there is no reason for `auto` to settle for less. This is
+    // why end users only need one mode (`auto`) plus the human-readable opt-out.
     let resolved_mode = if matches!(mode, CompressionMode::Auto) {
-        if input.len() > 20_000 {
-            CompressionMode::Full
-        } else {
-            CompressionMode::Lite
-        }
+        CompressionMode::Ultra
     } else {
         mode
     };
@@ -543,8 +544,8 @@ pub fn tokenizer_profile(model: Option<&str>) -> TokenizerProfile {
 
 pub fn decode_archive_free(input: &str) -> String {
     let mut out = input.to_string();
-    if let Some(rest) = input.strip_prefix("Legend: ") {
-        if let Some((legend, body)) = rest.split_once('\n') {
+    if let Some(rest) = input.strip_prefix("Legend: ")
+        && let Some((legend, body)) = rest.split_once('\n') {
             out = body.to_string();
             for entry in legend.split(';').map(str::trim).rev() {
                 if let Some((code, phrase)) = entry.split_once('=') {
@@ -552,7 +553,6 @@ pub fn decode_archive_free(input: &str) -> String {
                 }
             }
         }
-    }
     let replacements = [
         ("i18n", "internationalization"),
         ("l10n", "localization"),
@@ -678,6 +678,15 @@ fn compress_prose(input: &str, mode: CompressionMode) -> String {
 }
 
 pub fn compress_prose_full(input: &str, mode: CompressionMode) -> ProseCandidate {
+    let cache_key = (blake3_hex(input), mode, tokenizer_model().to_string());
+    if let Some(candidate) = prose_full_cache()
+        .lock()
+        .expect("prose full cache")
+        .get(&cache_key)
+        .cloned()
+    {
+        return candidate;
+    }
     let ctx = ProseCtx::new(input);
     let mut candidates = vec![ProseCandidate::raw(input)];
     if let Some(distilled) = distill_known_explanation(input, mode) {
@@ -697,14 +706,35 @@ pub fn compress_prose_full(input: &str, mode: CompressionMode) -> ProseCandidate
         }
     }
     if let Some(candidate) = compose_prose_passes(
-        &[p8_respell, p4_synonym, p6_fusion, p3_coref, p1_codebook],
+        &[
+            p8_respell,
+            p4_synonym,
+            p6_fusion,
+            p2_entropy,
+            p3_coref,
+            p1_codebook,
+        ],
         input,
         mode,
         &ctx,
     ) {
         candidates.push(candidate);
     }
-    choose_best_lossless_prose_candidate(input, candidates)
+    let best = choose_best_lossless_prose_candidate(input, candidates);
+    prose_full_cache()
+        .lock()
+        .expect("prose full cache")
+        .insert(cache_key, best.clone());
+    best
+}
+
+#[allow(clippy::type_complexity)]
+fn prose_full_cache() -> &'static Mutex<HashMap<(String, CompressionMode, String), ProseCandidate>>
+{
+    // streetman: exact-input hot cache for repeated prose calls; upgrade by adding an LRU if daemon workloads exceed process memory.
+    static CACHE: OnceLock<Mutex<HashMap<(String, CompressionMode, String), ProseCandidate>>> =
+        OnceLock::new();
+    CACHE.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
 fn choose_best_lossless_prose_candidate(
@@ -741,11 +771,10 @@ fn compose_prose_passes(
 ) -> Option<ProseCandidate> {
     let mut cur = ProseCandidate::raw(input);
     for pass in passes {
-        if let Some(next) = pass(&cur.text, mode, ctx) {
-            if accuracy_check(input, &next.text).score == 100 {
+        if let Some(next) = pass(&cur.text, mode, ctx)
+            && accuracy_check(input, &next.text).score == 100 {
                 cur = cur.chain(next);
             }
-        }
     }
     if cur.transforms.is_empty() {
         None
@@ -825,26 +854,34 @@ fn p3_coref(input: &str, _mode: CompressionMode, ctx: &ProseCtx) -> Option<Prose
             *counts.entry(phrase).or_insert(0) += 1;
         }
     }
-    let (phrase, _) = counts
+    let mut phrases = counts
         .into_iter()
         .filter(|(phrase, count)| *count >= 2 && phrase.split_whitespace().count() > 1)
-        .max_by_key(|(phrase, count)| *count * phrase.split_whitespace().count())?;
-    let code = "itA";
-    if input.split_whitespace().any(|word| trim_word(word) == code) {
+        .collect::<Vec<_>>();
+    phrases.sort_by_key(|(phrase, count)| {
+        std::cmp::Reverse(*count * phrase.split_whitespace().count())
+    });
+
+    let mut text = input.to_string();
+    let mut map = Vec::new();
+    for (phrase, _) in phrases.into_iter().take(8) {
+        let code = format!("it{}", (b'A' + map.len() as u8) as char);
+        if input.split_whitespace().any(|word| trim_word(word) == code)
+            || text.split_whitespace().any(|word| trim_word(word) == code)
+        {
+            continue;
+        }
+        let replaced = replace_after_first_whole_phrase(&text, &phrase, &code);
+        if replaced == text {
+            continue;
+        }
+        text = replaced;
+        map.push((code, phrase));
+    }
+    if map.is_empty() {
         return None;
     }
-    let text = replace_after_first_whole_phrase(input, &phrase, code);
-    if text == input {
-        return None;
-    }
-    prose_candidate_if_better(
-        input,
-        text,
-        TransformId::P3Coref,
-        vec![(code.to_string(), phrase)],
-        false,
-        ctx,
-    )
+    prose_candidate_if_better(input, text, TransformId::P3Coref, map, false, ctx)
 }
 
 fn p4_synonym(input: &str, _mode: CompressionMode, ctx: &ProseCtx) -> Option<ProseCandidate> {
@@ -898,8 +935,8 @@ fn p6_fusion(input: &str, _mode: CompressionMode, ctx: &ProseCtx) -> Option<Pros
     let mut map = Vec::new();
     let mut idx = 0;
     while idx < sentences.len() {
-        if idx + 1 < sentences.len() {
-            if let Some((subject, first, second)) =
+        if idx + 1 < sentences.len()
+            && let Some((subject, first, second)) =
                 simple_shared_subject(&sentences[idx], &sentences[idx + 1])
             {
                 let fused = format!("{subject} {first}, {second}.");
@@ -911,7 +948,6 @@ fn p6_fusion(input: &str, _mode: CompressionMode, ctx: &ProseCtx) -> Option<Pros
                 idx += 2;
                 continue;
             }
-        }
         out.push(sentences[idx].clone());
         idx += 1;
     }
@@ -959,10 +995,75 @@ fn p8_respell(input: &str, _mode: CompressionMode, ctx: &ProseCtx) -> Option<Pro
     )
 }
 
-fn p2_entropy(input: &str, _mode: CompressionMode, ctx: &ProseCtx) -> Option<ProseCandidate> {
-    let _ = input;
+fn p2_entropy(input: &str, mode: CompressionMode, ctx: &ProseCtx) -> Option<ProseCandidate> {
     let _ = ctx.rewriter?;
-    None
+    if !matches!(mode, CompressionMode::Full | CompressionMode::Ultra) {
+        return None;
+    }
+    let mut kept = Vec::new();
+    let mut dropped = Vec::new();
+    for (idx, raw) in input.split_whitespace().enumerate() {
+        let word = trim_word(raw);
+        let lower = word.to_ascii_lowercase();
+        // Note: do NOT gate on should_preserve_word here. Its length<=3 rule
+        // exists to protect short *content* words from skeletonization, but the
+        // entropy-droppable set is an explicit curated whitelist of English glue
+        // words (you/and/so/to/of/on/...), and protected identifiers are already
+        // excluded by phrase_contains_protected. Gating on should_preserve_word
+        // force-kept every <=3-char function word and made this pass inert.
+        if !word.is_empty()
+            && !phrase_contains_protected(word, ctx)
+            && is_entropy_droppable_word(&lower, mode)
+        {
+            dropped.push((idx.to_string(), raw.to_string()));
+        } else {
+            kept.push(raw);
+        }
+    }
+    if dropped.is_empty() {
+        return None;
+    }
+    prose_candidate_if_better(
+        input,
+        kept.join(" "),
+        TransformId::P2Entropy,
+        dropped,
+        true,
+        ctx,
+    )
+}
+
+fn is_entropy_droppable_word(word: &str, mode: CompressionMode) -> bool {
+    is_droppable_stopword(word)
+        || matches!(
+            word,
+            "also" | "already" | "currently" | "generally" | "mostly" | "often" | "only" | "simply"
+        )
+        || (matches!(mode, CompressionMode::Ultra) && is_ultra_droppable_word(word))
+}
+
+/// Ultra mode drops a broad set of low-information function words. The model
+/// reconstructs telegraphic English from context, and the exact originals are
+/// archived (P2 sets archive_required), so `retrieve` restores byte-for-byte.
+/// Protected tokens (identifiers, numbers, code, URLs) are filtered out by the
+/// caller before this is consulted, so this list only ever drops English glue.
+fn is_ultra_droppable_word(word: &str) -> bool {
+    matches!(
+        word,
+        // modals / auxiliaries
+        "can" | "could" | "may" | "might" | "would" | "will" | "shall" | "should"
+            | "must" | "do" | "does" | "did" | "has" | "have" | "had" | "be"
+        // pronouns (recoverable from context)
+            | "you" | "your" | "it" | "its" | "they" | "them" | "their" | "we" | "our" | "us"
+        // common prepositions
+            | "on" | "of" | "to" | "in" | "at" | "by" | "for" | "from" | "into" | "onto" | "upon"
+        // conjunctions / discourse glue
+            | "and" | "so" | "as" | "then" | "too" | "thus" | "hence" | "well" | "yet"
+        // determiners / quantifiers / light fillers
+            | "any" | "some" | "all" | "both" | "one" | "single" | "same" | "new" | "brand"
+            | "given" | "another" | "actually" | "basically" | "essentially" | "quite"
+            | "rather" | "somewhat" | "needs" | "as_well"
+    )
 }
 
 fn prose_candidate_if_better(
@@ -1848,16 +1949,14 @@ fn compress_json(input: &str) -> String {
         return compress_prose(input, CompressionMode::Full);
     };
     let summary = summarize_json_value(&value, 0);
-    if let Some(columnar) = json_columnar_rows(&value) {
-        if token_estimate(&columnar) < token_estimate(&summary) {
+    if let Some(columnar) = json_columnar_rows(&value)
+        && token_estimate(&columnar) < token_estimate(&summary) {
             return columnar;
         }
-    }
-    if let Some(factored) = json_schema_rows(&value) {
-        if token_estimate(&factored) < token_estimate(&summary) {
+    if let Some(factored) = json_schema_rows(&value)
+        && token_estimate(&factored) < token_estimate(&summary) {
             return factored;
         }
-    }
     summary
 }
 
@@ -2718,6 +2817,39 @@ mod tests {
         assert!(candidate.text.starts_with("Legend: "));
         assert!(token_estimate(&candidate.text) < token_estimate(&input));
         assert!(decode_archive_free(&candidate.text).contains("cache compiled regex objects"));
+    }
+
+    #[test]
+    fn p1_codebook_runs_on_long_prose() {
+        let input = "cache compiled regex objects because latency matters. ".repeat(60);
+        assert!(prose_words(&input).len() > 160);
+        let ctx = ProseCtx::new(&input);
+        assert!(p1_codebook(&input, CompressionMode::Full, &ctx).is_some());
+    }
+
+    #[test]
+    fn p2_entropy_archives_dropped_tokens() {
+        let input =
+            "This system is currently very stable and it is also generally reliable. ".repeat(8);
+        let ctx = ProseCtx::new(&input);
+        let candidate = p2_entropy(&input, CompressionMode::Ultra, &ctx).expect("p2 candidate");
+        assert!(candidate.transforms.contains(&TransformId::P2Entropy));
+        assert!(candidate.archive_required);
+        assert!(candidate.decode_ops[0]
+            .map
+            .iter()
+            .any(|(_, token)| token.trim_matches('.').eq("currently")));
+        assert!(token_estimate(&candidate.text) < token_estimate(&input));
+    }
+
+    #[test]
+    fn p3_coref_compresses_multiple_phrases() {
+        let input = "cache compiled regex objects before deployment. preserve stable archive records before deployment. cache compiled regex objects after deployment. preserve stable archive records after deployment. ".repeat(4);
+        let ctx = ProseCtx::new(&input);
+        let candidate = p3_coref(&input, CompressionMode::Full, &ctx).expect("p3 candidate");
+        assert!(candidate.transforms.contains(&TransformId::P3Coref));
+        assert!(candidate.decode_ops[0].map.len() > 1);
+        assert!(token_estimate(&candidate.text) < token_estimate(&input));
     }
 
     #[test]
