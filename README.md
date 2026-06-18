@@ -9,7 +9,7 @@ more context left for the next step, and local proof that code, URLs, versions,
 numbers, and security terms survived intact.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](./LICENSE)
-[![Rust](https://img.shields.io/badge/Rust-1.85+-orange)](https://www.rust-lang.org/)
+[![Rust](https://img.shields.io/badge/Rust-1.88+-orange)](https://www.rust-lang.org/)
 [![Accuracy](https://img.shields.io/badge/Accuracy-100%25-brightgreen)](./CLAIMS.md)
 [![Token Cut](https://img.shields.io/badge/Token_Cut-85%25+-ff69b4)](./CLAIMS.md)
 [![Bench](https://img.shields.io/badge/Bench-1440_calls-9cf)](./benchmarks/)
