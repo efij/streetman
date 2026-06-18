@@ -1,6 +1,6 @@
 {
   "name": "streetman",
-  "version": "4.0.2",
+  "version": "6.5.0",
   "description": "Streetman quality-gate v4 all-capability gated compression, Lean mode, daemon, and anchored code transport.",
   "contextFileName": "AGENTS.md"
 }

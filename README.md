@@ -24,11 +24,13 @@ numbers, and security terms survived intact.
 
 ## current status
 
-Streetman `5.5.0` is a source-backed Rust implementation with committed local
+Streetman `6.5.0` is a source-backed Rust implementation with committed local
 gates for the two claims that matter: fewer paid tokens and protected technical
 facts. It is built for people who use AI every day and do not want filler to eat
 their budget or their context window.
 
+- `streetman init` — one-shot host wiring: turns on per-prompt compression enforcement for Claude Code and Codex (`--uninstall` to reverse, `--dry-run` to preview).
+- `streetman instructions` — emits the per-turn compression instruction text injected by host hooks.
 - `streetman compress` — deterministic compression for prose, JSON, logs, search, diffs, code, docs, HTML.
 - `streetman compile` — ShortLang input/context compiler for prompts, logs, RAG chunks, history, and agent state.
 - `streetman run` / `streetman wrap` — agent command wrapper that writes replayable run receipts.
@@ -50,9 +52,9 @@ their budget or their context window.
 - `streetman lean` — implementation-minimalism layer: instructions, review, audit, gate, proof certificates, and Ponytail H2H fixtures.
 - Token-greedy compression — actual tokenizer counts drive transforms; final output is never worse than raw on trap fixtures.
 
-Current source version: `5.5.0`.
+Current source version: `6.5.0`.
 
-Primary 5.x safety and savings checks:
+Primary 6.x safety and savings checks:
 
 ```bash
 streetman --version
@@ -61,7 +63,7 @@ streetman bench run --suite quality-gate-4
 streetman enterprise release-attest --json
 ```
 
-The 5.1 source line keeps the v4 all-capability gate and adds token-greedy behavior that
+The 6.x source line keeps the v4 all-capability gate and adds token-greedy behavior that
 uses real tokenizer counts before accepting a shorter output. The enterprise
 surface also emits local SBOM, release-attestation, compliance, RBAC,
 deployment, observability, and readiness artifacts.

@@ -1,6 +1,6 @@
 {
   "name": "streetman",
-  "version": "4.0.2",
+  "version": "6.5.0",
   "description": "Quality-gate v4 all-capability gated compression, Lean mode, code transport, daemon, and enterprise controls.",
   "author": { "name": "Streetman" },
   "homepage": "https://github.com/efij/streetman",
