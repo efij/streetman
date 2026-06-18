@@ -146,7 +146,7 @@ Nobody else in the category offers independent verification infra.
 
 ### One-liner (recommended — no Rust toolchain needed)
 ```bash
-curl -fsSL https://streetman.dev/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/efij/streetman/main/install.sh | sh
 ```
 Downloads the prebuilt binary for your platform and **wires per-prompt
 compression enforcement into every AI host it finds** (Claude Code, Codex).

@@ -1,0 +1,62 @@
+name: release
+
+# Build prebuilt binaries for every supported platform and attach them to the
+# GitHub Release whose tag triggered this run. The asset names match exactly what
+# install.sh / hooks/streetman-bootstrap.sh fetch:
+#   streetman-darwin-arm64, streetman-darwin-x64,
+#   streetman-linux-x64,   streetman-linux-arm64,
+#   streetman-windows-x64
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to build/release (e.g. v6.5.0)"
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: ${{ matrix.asset }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-14
+            target: aarch64-apple-darwin
+            asset: streetman-darwin-arm64
+          - os: macos-14
+            target: x86_64-apple-darwin
+            asset: streetman-darwin-x64
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            asset: streetman-linux-x64
+          - os: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-gnu
+            asset: streetman-linux-arm64
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            asset: streetman-windows-x64
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Rust toolchain
+        run: rustup update stable && rustup target add ${{ matrix.target }}
+      - name: Build
+        run: cargo build --release --locked --bin streetman --target ${{ matrix.target }}
+      - name: Stage asset (unix)
+        if: runner.os != 'Windows'
+        run: cp target/${{ matrix.target }}/release/streetman ${{ matrix.asset }}
+      - name: Stage asset (windows)
+        if: runner.os == 'Windows'
+        run: copy target\${{ matrix.target }}\release\streetman.exe ${{ matrix.asset }}
+      - name: Upload to release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.inputs.tag || github.ref_name }}
+          files: ${{ matrix.asset }}
+          fail_on_unmatched_files: true

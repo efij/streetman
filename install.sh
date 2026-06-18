@@ -1,7 +1,7 @@
 #!/usr/bin/env sh
 # Streetman one-liner installer.
 #
-#   curl -fsSL https://streetman.dev/install.sh | sh
+#   curl -fsSL https://raw.githubusercontent.com/efij/streetman/main/install.sh | sh
 #
 # Fetches the prebuilt binary for this platform (falling back to `cargo install`
 # if a Rust toolchain is present), then wires per-prompt compression enforcement
