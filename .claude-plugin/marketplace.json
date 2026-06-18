@@ -3,7 +3,7 @@
   "owner": { "name": "Streetman", "url": "https://github.com/efij/streetman" },
   "metadata": {
     "description": "Lossless, reversible token compression. One mode (auto), per-prompt savings shown each turn.",
-    "version": "6.3.1"
+    "version": "6.3.2"
   },
   "plugins": [
     {

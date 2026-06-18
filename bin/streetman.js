@@ -13,8 +13,16 @@ const native = path.join(
 );
 
 if (!fs.existsSync(native)) {
+  // The postinstall may have been skipped (npm `ignore-scripts` / allow-scripts,
+  // common on locked-down corporate machines). Fetch the binary now, on first run.
+  spawnSync(process.execPath, [path.join(__dirname, "..", "scripts", "install-binary.js")], {
+    stdio: "inherit",
+  });
+}
+
+if (!fs.existsSync(native)) {
   console.error(
-    "[streetman] native binary not found. Reinstall the package, or install directly with:\n" +
+    "[streetman] native binary not found and could not be downloaded. Install directly with:\n" +
       "  cargo install --git https://github.com/efij/streetman streetman-cli --bin streetman --locked"
   );
   process.exit(1);
