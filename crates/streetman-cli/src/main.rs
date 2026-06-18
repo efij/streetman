@@ -67,6 +67,10 @@ enum Commands {
         /// Keep output human-readable (caps at Full; skips Ultra's telegraphic drop).
         #[arg(long)]
         readable: bool,
+        /// Opt-in aggressive lossy mode (default off). Maximizes prose ratio; still
+        /// preserves protected tokens and stays exactly restorable via the archive.
+        #[arg(long)]
+        lossy: bool,
     },
     Decode {
         #[arg(value_name = "FILE")]
@@ -658,12 +662,15 @@ fn main() -> anyhow::Result<()> {
             no_archive,
             fit,
             readable,
+            lossy,
         } => {
             let input = read_input(file)?;
-            // `--readable` caps at Full so output stays human-readable (skips
-            // Ultra's telegraphic function-word drop). Otherwise honor `--mode`
-            // (default `auto`, which the core resolves to max-safe Ultra).
-            let effective_mode = if readable {
+            // `--lossy` (opt-in) maximizes ratio; `--readable` caps at Full for
+            // human-readable output; otherwise honor `--mode` (default `auto`,
+            // which the core resolves to max-safe Ultra).
+            let effective_mode = if lossy {
+                CompressionMode::Lossy
+            } else if readable {
                 CompressionMode::Full
             } else {
                 mode.into()

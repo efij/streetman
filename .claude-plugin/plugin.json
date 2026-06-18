@@ -1,6 +1,6 @@
 {
   "name": "streetman",
-  "version": "6.2.0",
+  "version": "6.3.0",
   "description": "One-mode (auto) lossless token compression that beats caveman on prose, with per-prompt savings shown each turn. Logs/JSON/code lanes, daemon, reversible decode, enterprise controls.",
   "author": { "name": "Streetman", "url": "https://github.com/efij/streetman" },
   "homepage": "https://github.com/efij/streetman",

@@ -12,6 +12,10 @@ pub enum CompressionMode {
     Full,
     Ultra,
     Auto,
+    /// Opt-in aggressive lossy mode (default OFF). Drops low-salience prose for
+    /// maximum ratio while still preserving protected tokens (identifiers,
+    /// numbers, code, URLs) and staying exactly restorable via the archive.
+    Lossy,
 }
 
 impl std::str::FromStr for CompressionMode {
@@ -23,6 +27,7 @@ impl std::str::FromStr for CompressionMode {
             "full" => Ok(Self::Full),
             "ultra" => Ok(Self::Ultra),
             "auto" => Ok(Self::Auto),
+            "lossy" => Ok(Self::Lossy),
             other => Err(format!("unknown mode: {other}")),
         }
     }
@@ -140,6 +145,7 @@ pub enum TransformId {
     P7Elision,
     P8Respell,
     N6Discourse,
+    Lossy,
     StackedStacked,
 }
 
@@ -326,6 +332,12 @@ fn compress_candidate(
 
 fn fallback_modes(mode: CompressionMode) -> Vec<CompressionMode> {
     match mode {
+        CompressionMode::Lossy => vec![
+            CompressionMode::Lossy,
+            CompressionMode::Ultra,
+            CompressionMode::Full,
+            CompressionMode::Lite,
+        ],
         CompressionMode::Ultra => vec![
             CompressionMode::Ultra,
             CompressionMode::Full,
@@ -777,8 +789,61 @@ fn prose_passes() -> &'static [ProsePass] {
         p7_elision,
         n6_discourse,
         p2_entropy,
+        p_lossy,
         pass_stacked_stacked,
     ]
+}
+
+/// Opt-in aggressive lossy prose (active only when mode == Lossy). Targets a high
+/// reduction by keeping protected/code tokens (identifiers, numbers, URLs,
+/// capitalized/code-like) plus the most salient content words, and dropping the
+/// rest. Maximizes ratio at the cost of prose fidelity, but every protected token
+/// survives (accuracy-100) and the exact original is restored via the archive
+/// (archive_required) — so it is reversible, unlike lossy LLM/perplexity rewrites.
+fn p_lossy(input: &str, mode: CompressionMode, ctx: &ProseCtx) -> Option<ProseCandidate> {
+    if mode != CompressionMode::Lossy {
+        return None;
+    }
+    let raws: Vec<&str> = input.split_whitespace().collect();
+    let total = raws.len();
+    if total < 4 {
+        return None;
+    }
+    let mut protected_idx: Vec<usize> = Vec::new();
+    let mut content: Vec<(usize, usize)> = Vec::new(); // (index, word length)
+    for (i, raw) in raws.iter().enumerate() {
+        let w = trim_word(raw);
+        let codey = w.is_empty()
+            || phrase_contains_protected(w, ctx)
+            || w.chars()
+                .any(|c| c.is_ascii_digit() || c == '_' || c == '-' || c == '/')
+            || w.chars().any(|c| c.is_uppercase());
+        if codey {
+            protected_idx.push(i);
+        } else {
+            content.push((i, w.len()));
+        }
+    }
+    // Keep ~38% of words overall (≈55-65% token reduction); protected tokens are
+    // always kept, the remaining budget goes to the longest content words.
+    let target_keep = ((total as f64) * 0.38).ceil() as usize;
+    let content_budget = target_keep.saturating_sub(protected_idx.len());
+    content.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+    let keep_content: std::collections::HashSet<usize> =
+        content.iter().take(content_budget).map(|(i, _)| *i).collect();
+    let mut kept = Vec::new();
+    let mut dropped = Vec::new();
+    for (i, raw) in raws.iter().enumerate() {
+        if protected_idx.binary_search(&i).is_ok() || keep_content.contains(&i) {
+            kept.push(*raw);
+        } else {
+            dropped.push((i.to_string(), (*raw).to_string()));
+        }
+    }
+    if dropped.is_empty() {
+        return None;
+    }
+    prose_candidate_if_better(input, kept.join(" "), TransformId::Lossy, dropped, true, ctx)
 }
 
 fn compose_prose_passes(
@@ -1943,7 +2008,8 @@ fn mode_phrase_rules(mode: CompressionMode) -> &'static [(&'static str, &'static
             ("should be checked before deployment", "check pre-deploy"),
             ("observability and accessibility", "o11y/a11y"),
         ],
-        CompressionMode::Auto => &[],
+        // Lossy relies on the p_lossy pass for its ratio, not phrase rules.
+        CompressionMode::Auto | CompressionMode::Lossy => &[],
     }
 }
 
