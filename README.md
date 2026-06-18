@@ -142,12 +142,23 @@ Nobody else in the category offers independent verification infra.
 
 ## 📦 install
 
-### Current verified install
+### Install (no Rust toolchain needed)
+```bash
+# npm — downloads the prebuilt binary for your platform
+npm install -g github:efij/streetman
+```
+```text
+# Claude Code plugin
+/plugin marketplace add efij/streetman
+/plugin install streetman
+```
+
+### Build from source (requires Rust)
 ```bash
 cargo install --git https://github.com/efij/streetman streetman-cli --bin streetman --locked
 ```
 
-This installs the latest pushed source version. Current source version: `5.5.0`.
+This installs the latest pushed source version (`6.3.1`).
 
 Run the fixture gate after install:
 

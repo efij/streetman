@@ -1,0 +1,29 @@
+{
+  "name": "streetman",
+  "version": "6.3.1",
+  "description": "Lossless, reversible token compression — a Rust single static binary. This npm package downloads and runs it.",
+  "bin": {
+    "streetman": "bin/streetman.js"
+  },
+  "scripts": {
+    "postinstall": "node scripts/install-binary.js"
+  },
+  "files": [
+    "bin/streetman.js",
+    "scripts/install-binary.js"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/efij/streetman.git"
+  },
+  "homepage": "https://github.com/efij/streetman",
+  "license": "MIT",
+  "engines": {
+    "node": ">=16"
+  },
+  "os": [
+    "darwin",
+    "linux",
+    "win32"
+  ]
+}

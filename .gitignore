@@ -7,3 +7,7 @@ target/
 streetman.dev/
 .DS_Store
 .env
+
+# npm-downloaded native binary (fetched by scripts/install-binary.js)
+bin/streetman-bin
+bin/streetman.exe
