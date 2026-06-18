@@ -18,6 +18,8 @@ use streetman_core::{
         run_redteam_bench, run_token_greedy_bench,
     },
     build_run_receipt, builtin_oracle, check_policy, classify_sensitive, compile_shortlang,
+    compression_instructions, merge_claude_settings_hooks, strip_agents_block,
+    strip_claude_settings_hooks, upsert_agents_block,
     compliance_map, compress, decode_archive_free, default_protected_config_path,
     deployment_bundle, elide_unchanged_regions, enterprise_config_template, enterprise_report,
     fit_to_token_budget, gate_diff, lean_instructions, observability_template,
@@ -191,6 +193,28 @@ enum Commands {
     AccuracyCheck {
         original: PathBuf,
         candidate: PathBuf,
+    },
+    /// Print the per-turn compression instruction text (used by host hooks).
+    Instructions {
+        #[arg(long, default_value = "full")]
+        mode: String,
+        #[arg(long, default_value = "generic")]
+        host: String,
+    },
+    /// Install and wire per-prompt compression enforcement into AI hosts.
+    Init {
+        /// Which host(s) to wire: auto, claude, codex.
+        #[arg(long, default_value = "auto")]
+        host: String,
+        /// Compression level written to config and injected each turn.
+        #[arg(long, default_value = "full")]
+        mode: String,
+        /// Remove all streetman wiring instead of adding it.
+        #[arg(long)]
+        uninstall: bool,
+        /// Print the changes without writing any files.
+        #[arg(long)]
+        dry_run: bool,
     },
 }
 
@@ -792,6 +816,152 @@ fn main() -> anyhow::Result<()> {
                 bail!("accuracy check failed");
             }
         }
+        Commands::Instructions { mode, host } => {
+            println!("{}", compression_instructions(&mode, &host));
+        }
+        Commands::Init {
+            host,
+            mode,
+            uninstall,
+            dry_run,
+        } => run_init(&host, &mode, uninstall, dry_run)?,
+    }
+    Ok(())
+}
+
+fn streetman_bin_path() -> String {
+    std::env::current_exe()
+        .ok()
+        .and_then(|p| p.to_str().map(str::to_string))
+        .unwrap_or_else(|| "streetman".to_string())
+}
+
+fn claude_config_dir() -> Option<PathBuf> {
+    if let Ok(dir) = std::env::var("CLAUDE_CONFIG_DIR") {
+        if !dir.is_empty() {
+            return Some(PathBuf::from(dir));
+        }
+    }
+    dirs::home_dir().map(|h| h.join(".claude"))
+}
+
+fn codex_config_dir() -> Option<PathBuf> {
+    if let Ok(dir) = std::env::var("CODEX_HOME") {
+        if !dir.is_empty() {
+            return Some(PathBuf::from(dir));
+        }
+    }
+    dirs::home_dir().map(|h| h.join(".codex"))
+}
+
+/// Wire (or remove) per-prompt compression enforcement for the requested hosts.
+/// Best-effort and idempotent: re-running converges, `--uninstall` reverses,
+/// `--dry-run` prints intended changes without touching disk.
+fn run_init(host: &str, mode: &str, uninstall: bool, dry_run: bool) -> anyhow::Result<()> {
+    let host = host.to_ascii_lowercase();
+    let mut targets: Vec<&str> = match host.as_str() {
+        "claude" => vec!["claude"],
+        "codex" => vec!["codex"],
+        "auto" | "" => {
+            let mut detected = Vec::new();
+            if claude_config_dir().map(|p| p.exists()).unwrap_or(false) {
+                detected.push("claude");
+            }
+            if codex_config_dir().map(|p| p.exists()).unwrap_or(false) {
+                detected.push("codex");
+            }
+            if detected.is_empty() {
+                detected.push("claude"); // sensible default for a fresh machine
+            }
+            detected
+        }
+        other => bail!("unknown host '{other}' (expected auto, claude, or codex)"),
+    };
+    targets.dedup();
+
+    let bin = streetman_bin_path();
+    let verb = if uninstall { "remove" } else { "wire" };
+    let action = if dry_run { "[dry-run] would " } else { "" };
+
+    for target in &targets {
+        match *target {
+            "claude" => {
+                let dir = claude_config_dir().context("cannot resolve Claude config dir")?;
+                let path = dir.join("settings.json");
+                let existing = fs::read_to_string(&path).ok();
+                let next = if uninstall {
+                    match &existing {
+                        Some(s) => strip_claude_settings_hooks(s)?,
+                        None => {
+                            println!("{action}{verb} claude: nothing at {}", path.display());
+                            continue;
+                        }
+                    }
+                } else {
+                    merge_claude_settings_hooks(existing.as_deref(), &bin, mode)?
+                };
+                println!("{action}{verb} claude hooks -> {}", path.display());
+                if !dry_run {
+                    fs::create_dir_all(&dir)?;
+                    fs::write(&path, format!("{next}\n"))?;
+                }
+            }
+            "codex" => {
+                let dir = codex_config_dir().context("cannot resolve Codex config dir")?;
+                let path = dir.join("AGENTS.md");
+                let existing = fs::read_to_string(&path).ok();
+                let next = if uninstall {
+                    match &existing {
+                        Some(s) => strip_agents_block(s),
+                        None => {
+                            println!("{action}{verb} codex: nothing at {}", path.display());
+                            continue;
+                        }
+                    }
+                } else {
+                    upsert_agents_block(existing.as_deref(), mode, "codex")
+                };
+                println!("{action}{verb} codex instructions -> {}", path.display());
+                if !dry_run {
+                    fs::create_dir_all(&dir)?;
+                    fs::write(&path, next)?;
+                }
+            }
+            _ => {}
+        }
+    }
+
+    // Shared config (mode + on/off) under ~/.streetman/config.toml.
+    if let Some(home) = dirs::home_dir() {
+        let sm_dir = home.join(".streetman");
+        let cfg = sm_dir.join("config.toml");
+        if uninstall {
+            println!("{action}{verb} config -> {}", cfg.display());
+            if !dry_run {
+                let _ = fs::remove_file(&cfg);
+            }
+        } else {
+            println!("{action}{verb} config -> {}", cfg.display());
+            if !dry_run {
+                fs::create_dir_all(&sm_dir)?;
+                fs::write(
+                    &cfg,
+                    format!("mode = \"{}\"\nenabled = true\n", mode),
+                )?;
+            }
+        }
+    }
+
+    if dry_run {
+        println!("\nDry run only. Re-run without --dry-run to apply.");
+    } else if uninstall {
+        println!("\nStreetman enforcement removed. Restart your AI host to take effect.");
+    } else {
+        println!(
+            "\nStreetman compression enforced (mode={mode}) on: {}.",
+            targets.join(", ")
+        );
+        println!("Turn it off any time: streetman init --uninstall  (or say \"stop streetman\" in-session).");
     }
     Ok(())
 }

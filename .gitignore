@@ -17,3 +17,6 @@ benchmarks/results/*.json
 benchmarks/results/*.png
 benchmarks/results/*.html
 Streetman_Benchmark_*.pdf
+
+# private implementation plans — never publish (maintainer-only)
+plans/

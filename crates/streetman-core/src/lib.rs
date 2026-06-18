@@ -6,6 +6,7 @@ pub mod builtin;
 pub mod compress;
 pub mod config;
 pub mod enterprise;
+pub mod init;
 pub mod lean;
 pub mod run;
 pub mod security;
@@ -35,6 +36,10 @@ pub use enterprise::{
     compliance_map, deployment_bundle, enterprise_config_template, enterprise_report,
     observability_template, rbac_template, release_attestation, sbom, EnterpriseArtifact,
     EnterpriseReport,
+};
+pub use init::{
+    compression_instructions, merge_claude_settings_hooks, strip_agents_block,
+    strip_claude_settings_hooks, upsert_agents_block,
 };
 pub use lean::{
     audit_files, gate_diff, lean_instructions, ponytail_h2h_fixture, ponytail_parity_report,

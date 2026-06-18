@@ -1,5 +1,97 @@
 use std::process::{Command, Stdio};
 
+fn unique_tmp_home(tag: &str) -> std::path::PathBuf {
+    let base = std::env::temp_dir().join(format!(
+        "streetman-init-{tag}-{}-{}",
+        std::process::id(),
+        env!("CARGO_PKG_VERSION")
+    ));
+    let _ = std::fs::remove_dir_all(&base);
+    std::fs::create_dir_all(&base).expect("mktemp home");
+    base
+}
+
+#[test]
+fn cli_instructions_protect_code() {
+    let out = Command::new(env!("CARGO_BIN_EXE_streetman"))
+        .args(["instructions", "--mode", "full", "--host", "claude"])
+        .output()
+        .expect("run instructions");
+    assert!(out.status.success());
+    let text = String::from_utf8(out.stdout).unwrap();
+    assert!(text.contains("STREETMAN COMPRESSION ACTIVE"));
+    assert!(text.contains("reproduce them verbatim"));
+}
+
+#[test]
+fn cli_init_wires_claude_and_codex_idempotently_then_uninstalls() {
+    let home = unique_tmp_home("wire");
+    // Pre-create both host dirs so `auto` detects both.
+    std::fs::create_dir_all(home.join(".claude")).unwrap();
+    std::fs::create_dir_all(home.join(".codex")).unwrap();
+    let settings = home.join(".claude/settings.json");
+    let agents = home.join(".codex/AGENTS.md");
+
+    let run = |args: &[&str]| {
+        Command::new(env!("CARGO_BIN_EXE_streetman"))
+            .args(args)
+            .env("HOME", &home)
+            // ensure we don't pick up a real user config
+            .env_remove("CLAUDE_CONFIG_DIR")
+            .env_remove("CODEX_HOME")
+            .output()
+            .expect("run init")
+    };
+
+    // Wire twice — must be idempotent.
+    assert!(run(&["init", "--host", "auto", "--mode", "full"]).status.success());
+    assert!(run(&["init", "--host", "auto", "--mode", "full"]).status.success());
+
+    let settings_txt = std::fs::read_to_string(&settings).expect("settings written");
+    let v: serde_json::Value = serde_json::from_str(&settings_txt).unwrap();
+    for event in ["SessionStart", "UserPromptSubmit"] {
+        let groups = v["hooks"][event].as_array().expect("event array");
+        assert_eq!(groups.len(), 1, "{event} hook must not duplicate");
+    }
+    assert!(settings_txt.contains("instructions --mode full"));
+
+    let agents_txt = std::fs::read_to_string(&agents).expect("agents written");
+    assert_eq!(agents_txt.matches("streetman:start").count(), 1);
+    assert!(agents_txt.contains("STREETMAN COMPRESSION ACTIVE"));
+
+    let cfg = std::fs::read_to_string(home.join(".streetman/config.toml")).expect("config written");
+    assert!(cfg.contains("mode = \"full\""));
+    assert!(cfg.contains("enabled = true"));
+
+    // Uninstall removes our wiring.
+    assert!(run(&["init", "--uninstall"]).status.success());
+    let settings_after = std::fs::read_to_string(&settings).unwrap();
+    assert!(!settings_after.contains("streetman-managed"));
+    let agents_after = std::fs::read_to_string(&agents).unwrap();
+    assert!(!agents_after.contains("streetman:start"));
+    assert!(!home.join(".streetman/config.toml").exists());
+
+    let _ = std::fs::remove_dir_all(&home);
+}
+
+#[test]
+fn cli_init_dry_run_writes_nothing() {
+    let home = unique_tmp_home("dry");
+    std::fs::create_dir_all(home.join(".claude")).unwrap();
+    let out = Command::new(env!("CARGO_BIN_EXE_streetman"))
+        .args(["init", "--host", "claude", "--dry-run"])
+        .env("HOME", &home)
+        .env_remove("CLAUDE_CONFIG_DIR")
+        .output()
+        .expect("run init dry");
+    assert!(out.status.success());
+    let stdout = String::from_utf8(out.stdout).unwrap();
+    assert!(stdout.contains("dry-run"));
+    assert!(!home.join(".claude/settings.json").exists());
+    assert!(!home.join(".streetman/config.toml").exists());
+    let _ = std::fs::remove_dir_all(&home);
+}
+
 #[test]
 fn cli_compress_smoke() {
     let mut child = Command::new(env!("CARGO_BIN_EXE_streetman"))

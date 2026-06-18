@@ -1,6 +1,26 @@
 # Changelog
 
-## 6.4.0 - 2026-06-18
+## 6.5.0 - 2026-06-18
+
+- Added the one-liner installer `install.sh`
+  (`curl -fsSL https://streetman.dev/install.sh | sh`): fetches the prebuilt
+  binary and wires per-prompt enforcement into detected AI hosts.
+- Added `streetman init [--host auto|claude|codex] [--mode] [--uninstall]
+  [--dry-run]`: idempotent host wiring. Claude Code via `settings.json` hooks
+  (SessionStart + UserPromptSubmit), Codex via an `AGENTS.md` block. Writes
+  `~/.streetman/config.toml` (mode + enabled). `--uninstall` cleanly reverses.
+- Added `streetman instructions [--mode] [--host]`: emits the per-turn
+  compression instruction text the host hooks inject. Protects code, commands,
+  paths, URLs, identifiers, versions, and security terms verbatim.
+- New `streetman-core::init` module with unit tests for instruction text,
+  idempotent Claude settings merge/strip, and AGENTS.md block upsert/strip;
+  CLI smoke tests wire/uninstall against a temp HOME.
+- Fixed the README install contradiction; lead with the one-liner and describe
+  the three enforce layers (injection shipped; proxy + tool-output planned).
+- This is Layer A (instruction injection) of the enforce design. Layer B
+  (proxy) and Layer C (RTK-parity tool-output) follow in `6.6.0`/`6.7.0`.
+
+## 4.0.2 - 2026-06-17
 
 - Approved design for the one-liner install + per-prompt enforce story
   (`docs/superpowers/specs/2026-06-18-streetman-oneliner-enforce-design.md`).

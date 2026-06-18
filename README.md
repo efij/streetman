@@ -142,23 +142,37 @@ Nobody else in the category offers independent verification infra.
 
 ## 📦 install
 
-### Install (no Rust toolchain needed)
+### One-liner (recommended — no Rust toolchain needed)
 ```bash
-# npm — downloads the prebuilt binary for your platform
-npm install -g github:efij/streetman
+curl -fsSL https://streetman.dev/install.sh | sh
 ```
-```text
-# Claude Code plugin
-/plugin marketplace add efij/streetman
-/plugin install streetman
+Downloads the prebuilt binary for your platform and **wires per-prompt
+compression enforcement into every AI host it finds** (Claude Code, Codex).
+On by default at `mode=full`. Turn it off any time:
+```bash
+streetman init --uninstall      # remove all wiring
+# or, in a session: say "stop streetman"
+```
+Already have the binary? Just wire the hosts:
+```bash
+streetman init --host auto       # or: --host claude | --host codex
+streetman init --dry-run         # preview changes, write nothing
+```
+
+### npm
+```bash
+# downloads the prebuilt binary for your platform
+npm install -g github:efij/streetman
+streetman init --host auto
 ```
 
 ### Build from source (requires Rust)
 ```bash
 cargo install --git https://github.com/efij/streetman streetman-cli --bin streetman --locked
+streetman init --host auto
 ```
 
-This installs the latest pushed source version (`6.3.1`).
+This installs the latest pushed source version (`6.5.0`).
 
 Run the fixture gate after install:
 
@@ -181,13 +195,25 @@ cargo run --bin streetman -- bench run --suite quality-gate-3
 cargo run --bin streetman -- bench run --suite quality-gate-4
 ```
 
+### Per-prompt enforcement
+
+`streetman init` (run by the one-liner above) installs three independent,
+gracefully-degrading enforce layers — any can fail without blocking a session:
+
+- **Injection** — host hooks inject compression instructions every turn
+  (shipped: Claude Code via `settings.json`, Codex via `AGENTS.md`).
+- **Proxy** — deterministic byte-rewrite both directions (planned: `v6.6.0`).
+- **Tool-output** — PreToolUse compression of command output, RTK-parity
+  (planned: `v6.7.0`).
+
 ### Package managers and editor plugins
 
-These channels are not published yet:
+Not published to external marketplaces yet — install via the one-liner, npm, or
+cargo above. These store listings are tracked for a later release:
 
-- Claude Code marketplace plugin
+- Claude Code marketplace plugin (the `.claude-plugin/` manifest exists; not
+  yet listed in the marketplace)
 - Cursor installer
-- Codex CLI plugin
 - VS Code Marketplace extension
 - Homebrew formula
 - Crates.io package
