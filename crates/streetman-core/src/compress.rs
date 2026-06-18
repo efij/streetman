@@ -2054,16 +2054,66 @@ fn compress_json(input: &str) -> String {
     let Ok(value) = serde_json::from_str::<serde_json::Value>(input) else {
         return compress_prose(input, CompressionMode::Full);
     };
-    let summary = summarize_json_value(&value, 0);
-    if let Some(columnar) = json_columnar_rows(&value)
-        && token_estimate(&columnar) < token_estimate(&summary) {
-            return columnar;
+    // Collect every applicable representation and keep the smallest. The
+    // compact-notation fallback handles nested config objects (no record array
+    // to factor) that previously fell through to summarize at ~0% savings.
+    // All are faithful summaries; the exact original is restored via the archive.
+    let mut best = summarize_json_value(&value, 0);
+    let mut best_tok = token_estimate(&best);
+    for cand in [
+        json_columnar_rows(&value),
+        json_schema_rows(&value),
+        Some(json_compact_notation(&value)),
+    ]
+    .into_iter()
+    .flatten()
+    {
+        let t = token_estimate(&cand);
+        if t < best_tok {
+            best = cand;
+            best_tok = t;
         }
-    if let Some(factored) = json_schema_rows(&value)
-        && token_estimate(&factored) < token_estimate(&summary) {
-            return factored;
+    }
+    best
+}
+
+/// Quote/brace-light, prefix-factored rendering of arbitrary JSON. Lossy-but-
+/// faithful (exact original restored via the archive); wins on nested config
+/// objects where no uniform record array exists to factor.
+fn json_compact_notation(value: &serde_json::Value) -> String {
+    format!("json1c:{}", render_json_compact(value))
+}
+
+fn render_json_compact(v: &serde_json::Value) -> String {
+    use serde_json::Value;
+    match v {
+        Value::Object(map) => {
+            // Render every key literally (k=v) — no prefix-factoring. Factoring
+            // would drop the literal key strings ("feature_0") and fail the
+            // accuracy gate; quote/brace-light rendering alone is the lossless win.
+            let parts: Vec<String> = map
+                .iter()
+                .map(|(k, val)| format!("{k}={}", render_json_compact(val)))
+                .collect();
+            format!("{{{}}}", parts.join(" "))
         }
-    summary
+        Value::Array(items) => format!(
+            "[{}]",
+            items
+                .iter()
+                .map(render_json_compact)
+                .collect::<Vec<_>>()
+                .join(",")
+        ),
+        Value::String(s) => {
+            if !s.is_empty() && s.chars().all(|c| c.is_alphanumeric() || "._-:/+".contains(c)) {
+                s.clone()
+            } else {
+                format!("\"{s}\"")
+            }
+        }
+        other => other.to_string(),
+    }
 }
 
 fn json_schema_rows(value: &serde_json::Value) -> Option<String> {
@@ -2306,7 +2356,10 @@ fn log_template_regexes() -> &'static [(regex::Regex, &'static str)] {
                 r"\b(req|request|trace|span|user|job|worker)[_-]?[A-Za-z0-9-]+\b",
                 "{$1}",
             ),
-            (r"\b\d+\b", "{n}"),
+            // Mask every digit run, including numbers glued to a unit suffix
+            // ("10ms", "512Mi"); a trailing \b would miss those and split one
+            // template into many (dur=10ms..16ms -> 7 templates instead of 1).
+            (r"\d+", "{n}"),
         ]
         .into_iter()
         .map(|(pat, rep)| (regex::Regex::new(pat).expect("log template regex"), rep))
@@ -2440,23 +2493,37 @@ fn prose_protected_tokens(input: &str) -> Vec<String> {
 }
 
 fn filter_low_signal_log_lines(input: &str) -> String {
-    input
-        .lines()
+    // High-signal = the lines a reader actually needs preserved: error/anomaly
+    // lines, plus rare lines (a template seen <=2 times). High-frequency routine
+    // lines belong to a template and are captured by templatization + the archive,
+    // so they are droppable. This is what lets routine INFO/worker logs compress
+    // hard while keeping accuracy-100 on the lines that matter. (Keyword-only
+    // classification missed routine lines that lacked an "info"/"debug" tag.)
+    let lines: Vec<&str> = input.lines().collect();
+    let mut counts: HashMap<String, usize> = HashMap::new();
+    for line in &lines {
+        *counts.entry(log_template(line)).or_insert(0) += 1;
+    }
+    lines
+        .iter()
         .filter(|line| {
             let lower = line.to_ascii_lowercase();
-            let low_signal = [
-                " passed",
-                " pass ",
-                " info ",
-                " debug ",
-                " heartbeat",
-                "collected ",
-                "test session starts",
+            let anomaly = [
+                "error",
+                "fatal",
+                "warn",
+                "failed",
+                "traceback",
+                "exception",
+                "panic",
+                "critical",
             ]
             .iter()
             .any(|needle| lower.contains(needle));
-            !low_signal
+            let rare = counts.get(&log_template(line)).copied().unwrap_or(0) <= 2;
+            anomaly || rare
         })
+        .copied()
         .collect::<Vec<_>>()
         .join("\n")
 }
