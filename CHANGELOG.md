@@ -1,5 +1,18 @@
 # Changelog
 
+## 6.4.0 - 2026-06-18
+
+- Approved design for the one-liner install + per-prompt enforce story
+  (`docs/superpowers/specs/2026-06-18-streetman-oneliner-enforce-design.md`).
+- Scope: `curl | sh` installer + `streetman init` host wiring for Claude Code
+  and Codex, with three independent, gracefully-degrading enforce layers:
+  instruction injection (prose, caveman-parity), proxy byte-rewrite
+  (deterministic, both directions), and a PreToolUse tool-output compressor
+  (clean-room RTK-parity wedge: top ~10 commands, failure recovery,
+  never-worse guard, `streetman gain`).
+- No behavior change yet; this release records the agreed design and bumps the
+  source/plugin manifests to `6.4.0`.
+
 ## 4.0.2 - 2026-06-17
 
 - Added a bundled offline capability-9 prose model asset and wired stacked prose to run

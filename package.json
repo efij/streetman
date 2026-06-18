@@ -1,6 +1,6 @@
 {
   "name": "streetman",
-  "version": "6.3.2",
+  "version": "6.4.0",
   "description": "Lossless, reversible token compression — a Rust single static binary. This npm package downloads and runs it.",
   "bin": {
     "streetman": "bin/streetman.js"
